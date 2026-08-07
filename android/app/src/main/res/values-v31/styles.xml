@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12+ (API 31+) splash-screen attribute overrides.
+
+    Parent is the same non-splash base style used by values/styles.xml so
+    aapt2 doesn't need the Theme.SplashScreen framework class (API 31+).
+    Flutter's FlutterActivity calls setTheme(NormalTheme) after the first
+    frame, so postSplashScreenTheme is not required.
+
+    The windowSplashScreen* attrs are themselves API 31 attributes — they
+    are only read on API 31+ devices and this file carries the -v31 qualifier,
+    so they are never processed on older SDKs.
+-->
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowSplashScreenBackground">@color/launch_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/launch_bg</item>
+    </style>
+
+    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@color/aether_night</item>
+    </style>
+</resources>

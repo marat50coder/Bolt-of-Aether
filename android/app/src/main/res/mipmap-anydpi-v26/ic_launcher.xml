@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Adaptive launcher icon for Android 8.0+ (API 26+).
+    Identical structure to drawable-anydpi-v26/ic_splash_logo.xml so the
+    launcher icon and splash-screen icon are visually the same.
+
+    Canvas: 108 dp × 108 dp.
+    Inset 15 dp per side keeps icon2 inside the 72 dp safe zone, visible
+    under every launcher mask (circle, squircle, teardrop, rounded-rect …).
+
+    DO NOT REGENERATE with flutter_launcher_icons — managed by hand.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/launch_bg"/>
+    <foreground>
+        <inset
+            android:drawable="@drawable/icon2"
+            android:inset="15dp"/>
+    </foreground>
+</adaptive-icon>

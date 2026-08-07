@@ -1,0 +1,54 @@
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+pubspec.lock
+
+# Android
+android/.gradle/
+android/.kotlin/
+android/local.properties
+android/key.properties
+*.keystore
+*.jks
+
+# IntelliJ / Android Studio
+*.iml
+.idea/
+*.ipr
+*.iws
+
+# VS Code / Cursor
+.vscode/
+.cursor/
+
+# macOS
+.DS_Store
+
+# Coverage
+coverage/
+
+# Release APK (build artefact)
+build/app/outputs/
+
+# Dart generated
+*.g.dart
+*.freezed.dart
+
+# Env / secrets
+.env
+*.env
+
+# Temporary debug screenshots / previews
+_tmp_preview/
+check.png
+cold1.png
+final.png
+final2.png
+fix1.png
+fix2.png
+home.png
+live1.png
+live2.png

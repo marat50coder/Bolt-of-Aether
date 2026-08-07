@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App background — used for NormalTheme windowBackground and launch_bg. -->
+    <color name="aether_night">#071233</color>
+
+    <!--
+        Adaptive-icon background layer and Android 12+ splash background.
+        Matches aether_night so the icon corners blend seamlessly into the
+        app background colour when the splash transitions away.
+    -->
+    <color name="launch_bg">#071233</color>
+
+    <!-- Legacy name kept so old auto-generated references still compile. -->
+    <color name="ic_launcher_background">#071233</color>
+</resources>

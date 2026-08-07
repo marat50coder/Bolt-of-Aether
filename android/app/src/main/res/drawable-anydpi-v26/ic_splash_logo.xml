@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Splash-screen icon for Android 12+ (API 31+).
+    Referenced by values-v31/styles.xml → windowSplashScreenAnimatedIcon.
+
+    Canvas: 108 dp × 108 dp (adaptive-icon spec).
+    Safe zone inner square: 72 dp → 18 dp per side minimum inset.
+    We use 15 dp (≈14 %) so the bolt shield fills the safe zone nicely.
+    Raise to 18-19 dp if the art still clips under a strict circular mask;
+    lower to 10 dp if you want it larger.
+
+    DO NOT REGENERATE with flutter_launcher_icons — managed by hand.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/launch_bg"/>
+    <foreground>
+        <inset
+            android:drawable="@drawable/icon2"
+            android:inset="15dp"/>
+    </foreground>
+</adaptive-icon>

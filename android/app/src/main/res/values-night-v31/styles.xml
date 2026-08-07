@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same as values-v31/styles.xml — icon is designed for dark background in both themes. -->
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowSplashScreenBackground">@color/launch_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/launch_bg</item>
+    </style>
+
+    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@color/aether_night</item>
+    </style>
+</resources>
