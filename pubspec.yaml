@@ -61,7 +61,7 @@ dev_dependencies:
 #                             nothing important is cropped by any launcher mask.
 flutter_launcher_icons:
   android: "ic_launcher"
-  ios: false
+  ios: true
   image_path: "assets/icon.png"
   adaptive_icon_background: "assets/icon_adaptive_foreground.png"
   adaptive_icon_foreground: "assets/icon_adaptive_foreground.png"
