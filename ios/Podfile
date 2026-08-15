@@ -1,6 +1,5 @@
-platform :ios, '13.0'
+platform :ios, '15.0'
 
-# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
 project 'Runner', {
@@ -28,11 +27,21 @@ flutter_ios_podfile_setup
 
 target 'Runner' do
   use_frameworks!
-
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
     inherit! :search_paths
   end
+end
+
+# Notification Service Extension for rich media pushes. Pinned so Firebase
+# resolves to the same major version as the Runner side; if `flutter pub get`
+# picks a different Firebase major, bump this pin to match.
+target 'BoltPushRelay' do
+  use_frameworks!
+  platform :ios, '15.0'
+  # Must match Firebase iOS SDK version chosen by firebase_core on the Runner
+  # side. Bump both together when firebase_core resolves to a newer major.
+  pod 'Firebase/Messaging', '12.17.0'
 end
 
 post_install do |installer|

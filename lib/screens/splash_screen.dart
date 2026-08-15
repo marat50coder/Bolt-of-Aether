@@ -143,7 +143,7 @@ class _SplashScreenState extends State<SplashScreen>
               Image.asset(
                 asset,
                 fit: BoxFit.cover,
-                filterQuality: FilterQuality.medium,
+                filterQuality: FilterQuality.high,
                 frameBuilder: (context, child, frame, wasSync) => AnimatedOpacity(
                   opacity: frame == null ? 0 : 1,
                   duration: const Duration(milliseconds: 420),
@@ -206,7 +206,14 @@ class _LoadingBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AetherProgressBar(value: progress);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const DottedLoadingText(text: 'Loading', fontSize: 22),
+        const SizedBox(height: 18),
+        AetherProgressBar(value: progress),
+      ],
+    );
   }
 }
 

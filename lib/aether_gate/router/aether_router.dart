@@ -1,0 +1,218 @@
+import 'dart:async';
+import 'dart:ui' as ui;
+
+import '../config/relay_config.dart';
+import '../models/gate_mode.dart';
+import '../transport/agate_log.dart';
+import '../transport/bolt_pulse.dart';
+import '../transport/channel_dispatch.dart';
+import '../transport/relay_vault.dart';
+import '../transport/signal_probe.dart';
+import '../transport/storm_attrib.dart';
+
+/// The routing brain. `decide()` runs the full boot pipeline and returns a
+/// GateDecision. It de-dupes CONCURRENT callers (returning the same future)
+/// but clears its cache once complete, so a later Retry re-runs the whole
+/// pipeline — see `gray_flow_lessons.md` §3.
+class AetherRouter {
+  AetherRouter({
+    required this.vault,
+    required this.probe,
+    required this.attrib,
+    required this.dispatch,
+    required this.pulse,
+    required this.gateEnabled,
+  });
+
+  final RelayVault vault;
+  final SignalProbe probe;
+  final StormAttrib attrib;
+  final ChannelDispatch dispatch;
+  final BoltPulse pulse;
+  final bool gateEnabled;
+
+  Future<GateDecision>? _pending;
+
+  Future<GateDecision> decide() {
+    return _pending ??= _decide().whenComplete(() => _pending = null);
+  }
+
+  Future<GateDecision> _decide() async {
+    if (!gateEnabled) {
+      agateLog(() => '[AGATE.route] creds not ready → native');
+      return const GateNative();
+    }
+
+    final storedRoute = await vault.route();
+    agateLog(() => '[AGATE.route] stored=$storedRoute');
+
+    switch (storedRoute) {
+      case GateRoute.web:
+        return _returningWeb();
+      case GateRoute.native:
+        return _returningNative();
+      case GateRoute.fresh:
+        return _firstDecision();
+    }
+  }
+
+  // ---------------------------------------------------------- fresh install
+
+  Future<GateDecision> _firstDecision() async {
+    // 1. Radio + real reachability before touching AppsFlyer — see lessons §25.
+    if (!await probe.hasRadio()) {
+      agateLog(() => '[AGATE.route] no radio → offline (fresh stays fresh)');
+      return const GateOffline();
+    }
+    if (!await probe.dnsProbe()) {
+      agateLog(() => '[AGATE.route] no dns → offline (fresh stays fresh)');
+      return const GateOffline();
+    }
+
+    // 2. Attribution SDK must be started (ATT + initSdk) BEFORE we begin the
+    //    conversion wait; the push token warms up in parallel. See lessons §26.
+    final tokenFuture = pulse.obtainToken();
+    await attrib.start();
+
+    // 3. Bound the token wait tightly — a null token just omits the two push
+    //    fields, it must NOT eat into the attribution window below.
+    final token = await tokenFuture.timeout(
+      const Duration(seconds: 4),
+      onTimeout: () => null,
+    );
+
+    // 4. Build the flat body. buildPayload blocks up to `awaitSignalsInstall`
+    //    for the AppsFlyer conversion callback, then assembles the payload.
+    final body = await attrib.buildPayload(
+      apnsFcmToken: token,
+      locale: _locale(),
+      afIdOverride: null,
+    );
+    final reply = await dispatch.send(body);
+
+    if (reply.granted && reply.destination != null) {
+      await vault.writeSavedUrl(reply.destination!, expiresAt: reply.expiresAt);
+      await vault.commitRoute(GateRoute.web);
+      return GateWeb(reply.destination!);
+    }
+
+    // A "no data" answer only commits us to native when the POST ACTUALLY
+    // carried attribution. If AppsFlyer was slow and the body had no
+    // attribution keys (only the base identity fields), keep the route `fresh`
+    // so the next launch retries — by then AppsFlyer serves the conversion
+    // from cache instantly and the POST carries full attribution. This stops a
+    // slow first launch from permanently trapping a non-organic user on the
+    // native game (the exact symptom: 404 "No data" arriving before the
+    // conversion callback). See gray_flow_lessons.md §5.
+    if (reply.message != null && _bodyHasAttribution(body)) {
+      await vault.commitRoute(GateRoute.native);
+      await vault.setOrganicCommitted(true);
+    }
+    return const GateNative();
+  }
+
+  // ---------------------------------------------------- returning web install
+
+  Future<GateDecision> _returningWeb() async {
+    if (!await probe.hasRadio()) return const GateOffline();
+
+    // Race a fresh POST with the saved URL. If we already have a saved URL
+    // that has not expired, hand it back immediately and let a background
+    // refresh update it for next launch.
+    final saved = await vault.savedUrl();
+    if (saved != null) {
+      unawaited(_backgroundRefresh());
+      return GateWeb(saved);
+    }
+
+    // No saved URL — do a live decision.
+    return _firstDecision();
+  }
+
+  Future<void> _backgroundRefresh() async {
+    try {
+      unawaited(attrib.start());
+      final token = pulse.cachedToken ??
+          await pulse.obtainToken().timeout(
+                AetherRelayConfig.awaitSignalsInstall,
+                onTimeout: () => null,
+              );
+      final body = await attrib.buildPayload(
+        apnsFcmToken: token,
+        locale: _locale(),
+        afIdOverride: null,
+      );
+      final reply = await dispatch.send(body);
+      if (reply.granted && reply.destination != null) {
+        await vault.writeSavedUrl(reply.destination!,
+            expiresAt: reply.expiresAt);
+      }
+    } catch (e) {
+      agateLog(() => '[AGATE.route] bg refresh failed: $e');
+    }
+  }
+
+  // --------------------------------------------------- returning native install
+
+  Future<GateDecision> _returningNative() async {
+    // Occasional re-conversion — never blocking. The organic user keeps the
+    // native path unless a successful reply flips them.
+    final last = vault.lastOrganicCheck;
+    final due = last == null ||
+        DateTime.now().difference(last).inSeconds >=
+            AetherRelayConfig.organicRecheckSeconds * 3600;
+    if (due && await probe.hasRadio()) {
+      unawaited(_organicRecheck());
+    }
+    return const GateNative();
+  }
+
+  Future<void> _organicRecheck() async {
+    try {
+      await vault.stampOrganicCheck();
+      unawaited(attrib.start());
+      final token = pulse.cachedToken;
+      final body = await attrib.buildPayload(
+        apnsFcmToken: token,
+        locale: _locale(),
+        afIdOverride: null,
+      );
+      final reply = await dispatch.send(body);
+      if (reply.granted && reply.destination != null) {
+        await vault.writeSavedUrl(reply.destination!,
+            expiresAt: reply.expiresAt);
+        await vault.commitRoute(GateRoute.web);
+        agateLog(() => '[AGATE.route] recheck flipped native → web');
+      }
+    } catch (_) {}
+  }
+
+  /// True when the composed body carries AppsFlyer attribution — i.e. any key
+  /// beyond the base identity fields that are always present. Used to tell a
+  /// genuine "no campaign" answer (attribution present → commit native) apart
+  /// from a slow-conversion miss (attribution absent → stay fresh, retry).
+  static bool _bodyHasAttribution(Map<String, dynamic> body) {
+    const baseKeys = <String>{
+      'af_id',
+      'bundle_id',
+      'os',
+      'store_id',
+      'locale',
+      'push_token',
+      'firebase_project_id',
+    };
+    return body.keys.any((k) => !baseKeys.contains(k));
+  }
+
+  static String _locale() {
+    try {
+      final l = ui.PlatformDispatcher.instance.locale;
+      final code = l.countryCode == null || l.countryCode!.isEmpty
+          ? l.languageCode
+          : '${l.languageCode}_${l.countryCode}';
+      return code.isEmpty ? 'en_US' : code;
+    } catch (_) {
+      return 'en_US';
+    }
+  }
+}
