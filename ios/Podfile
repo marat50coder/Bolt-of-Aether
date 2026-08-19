@@ -48,4 +48,64 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
   end
+
+  # ==========================================================
+  #  Strip Flutter's Swift Package Manager integration.
+  # ==========================================================
+  # Firebase ships as a CocoaPod (required by the BoltPushRelay NSE target
+  # that pins `pod 'Firebase/Messaging'`). Flutter 3.24+ additionally pulls
+  # firebase-ios-sdk in as an SPM package via
+  # `FlutterGeneratedPluginSwiftPackage`, and the two identical `module
+  # Firebase` declarations collide during the Xcode archive with
+  # `Redefinition of module 'Firebase'`.
+  #
+  # The env var / `flutter config --no-enable-swift-package-manager`
+  # switches only fire when the caller sets them BEFORE `flutter build ipa`.
+  # On some Codemagic UI-triggered workflows those settings are ignored and
+  # Flutter re-adds the SPM refs each build. Podfile `post_install` runs
+  # AFTER Flutter's "Adding Swift Package Manager integration..." step but
+  # BEFORE Xcode's archive step, so this is the last safe moment to undo
+  # the integration without needing any CI-side configuration.
+  require 'xcodeproj'
+  require 'fileutils'
+
+  runner_project_path = File.expand_path('Runner.xcodeproj', __dir__)
+  if File.exist?(runner_project_path)
+    runner_project = Xcodeproj::Project.open(runner_project_path)
+    removed = false
+
+    # Top-level PBXProject `packageReferences` — the XCLocalSwiftPackage /
+    # XCRemoteSwiftPackage registrations Flutter injects.
+    if runner_project.root_object.respond_to?(:package_references) &&
+       runner_project.root_object.package_references.any?
+      runner_project.root_object.package_references.clear
+      removed = true
+    end
+
+    # Per-target `packageProductDependencies` — the actual SPM products the
+    # Runner / BoltPushRelay targets link against.
+    runner_project.targets.each do |target|
+      next unless target.respond_to?(:package_product_dependencies)
+      next if target.package_product_dependencies.empty?
+      target.package_product_dependencies.clear
+      removed = true
+    end
+
+    if removed
+      runner_project.save
+      Pod::UI.notice \
+        'Stripped SPM references from Runner.xcodeproj to prevent Firebase module redefinition.'
+    end
+  end
+
+  # Kill the SPM caches on disk so Xcode does not pick up firebase-ios-sdk
+  # from `build/ios/SourcePackages` or the shared `swiftpm/` folder either.
+  ['../build/ios/SourcePackages',
+   'Runner.xcodeproj/project.xcworkspace/xcshareddata/swiftpm'].each do |rel|
+    abs = File.expand_path(rel, __dir__)
+    if Dir.exist?(abs)
+      FileUtils.rm_rf(abs)
+      Pod::UI.notice "Removed stale SPM directory: #{abs}"
+    end
+  end
 end
