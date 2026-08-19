@@ -20,6 +20,12 @@ workflows:
         BUNDLE_ID: com.boltaether.boltaethergame
         NSE_BUNDLE_ID: com.boltaether.boltaethergame.NotificationService
         APP_STORE_APPLE_ID: "6797957269"
+        # Belt-and-braces disable of Swift Package Manager. Flutter 3.24+
+        # honours this env var even when `flutter config` state was not
+        # persisted on the CI VM. Without it, `flutter build ipa` adds the
+        # firebase-ios-sdk SPM package on top of the Firebase CocoaPod and
+        # the two collide with "Redefinition of module 'Firebase'".
+        FLUTTER_ENABLE_SWIFT_PACKAGE_MANAGER: "false"
 
     triggering:
       events:
