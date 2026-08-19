@@ -28,16 +28,29 @@ class SignalProbe {
 
   /// Simple DNS probe. The resolve targets are rotated per project (never the
   /// template's `cloudflare.com`) — see `gray_part_mixing_review.mdc` §1.
+  ///
+  /// One retry loop with a short delay between passes. Right after a wifi
+  /// handoff iOS's DNS resolver can take up to ~1 s to settle even though
+  /// `Connectivity.checkConnectivity()` already reports the interface up.
+  /// Without the retry the SilenceScreen "Try Again" tap immediately after
+  /// wifi returns bounces back to SilenceScreen because the first-pass
+  /// lookup for `gstatic.com` fails on a stale resolver, so the router
+  /// returns `GateOffline` even though the network is fine.
   Future<bool> dnsProbe({
-    Duration timeout = const Duration(seconds: 3),
+    Duration timeout = const Duration(milliseconds: 1500),
   }) async {
-    const targets = <String>['gstatic.com', 'wikipedia.org'];
-    for (var i = 0; i < targets.length; i++) {
-      try {
-        final hits = await InternetAddress.lookup(targets[i]).timeout(timeout);
-        if (hits.isNotEmpty && hits.first.rawAddress.isNotEmpty) return true;
-      } catch (_) {
-        // fall through to the next target
+    const targets = <String>['gstatic.com', 'wikipedia.org', 'apple.com'];
+    for (var attempt = 0; attempt < 2; attempt++) {
+      for (var i = 0; i < targets.length; i++) {
+        try {
+          final hits = await InternetAddress.lookup(targets[i]).timeout(timeout);
+          if (hits.isNotEmpty && hits.first.rawAddress.isNotEmpty) return true;
+        } catch (_) {
+          // fall through to the next target
+        }
+      }
+      if (attempt == 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
       }
     }
     return false;

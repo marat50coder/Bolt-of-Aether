@@ -210,7 +210,7 @@ class StormAttrib {
       if (conv != null) ...conv,
       if (deep != null) ...deep,
       if (af != null && af.isNotEmpty) 'af_id': af,
-      'bundle_id': AetherRelayConfig.uaBundleValue,
+      'bundle_id': AetherRelayConfig.bundleId,
       'os': 'iOS',
       'store_id': AetherRelayConfig.platformStoreId,
       'locale': locale,

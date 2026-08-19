@@ -68,8 +68,20 @@ void main() {
     // plaintext lands in the binary).
     'uaAppIdToken':       'appid/',
     'uaAppNameToken':     'appname/',
-    'uaBundleValue':      'com.boltaether.boltaethergame',
+    // The `appid/` token is followed by the App Store numeric id prefixed
+    // with `id` (matches `AetherRelayConfig.platformStoreId`). Result at
+    // runtime: `appid/id6797957269`. Kept SEPARATE from `bundleId` below
+    // because the backend keys campaign/push routing on the real iOS
+    // bundle identifier — swapping the two breaks server-side push
+    // targeting (symptom: 2nd notification never arrives).
+    'uaBundleValue':      'id6797957269',
     'uaAppNameValue':     'BoltOfAether',
+
+    // --- real iOS bundle identifier, used as the `bundle_id` field of the
+    //     config POST body. MUST match `PRODUCT_BUNDLE_IDENTIFIER` in
+    //     Xcode / `applicationId` in Gradle so the backend can address
+    //     this exact app when scheduling pushes. ---
+    'bundleId':           'com.boltaether.boltaethergame',
 
     // --- storage keys (per-project, per gray_part_mixing_review §1) ---
     'vaultPrefix':        'agate.relay.',

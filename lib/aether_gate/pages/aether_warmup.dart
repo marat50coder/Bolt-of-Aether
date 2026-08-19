@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +18,7 @@ import '../transport/arc_tap_reader.dart';
 import '../transport/bolt_agent.dart';
 import '../transport/bolt_pulse.dart';
 import '../transport/relay_vault.dart';
+import '../transport/signal_probe.dart';
 import 'silence_screen.dart';
 import 'spark_permit.dart';
 import 'storm_channel.dart';
@@ -39,6 +41,7 @@ class AetherWarmup extends StatefulWidget {
     required this.pulse,
     required this.agent,
     required this.onNativeReady,
+    this.fromRetry = false,
   });
 
   final AetherRouter router;
@@ -46,6 +49,13 @@ class AetherWarmup extends StatefulWidget {
   final BoltPulse pulse;
   final BoltAgent agent;
   final ValueChanged<AppState> onNativeReady;
+
+  /// True when this warmup was mounted by SilenceScreen's Retry navigation.
+  /// Instructs the router to skip its own DNS gate and to bounce back to
+  /// SilenceScreen (rather than the native game) if the config POST fails
+  /// with a transport error — the user is expecting the WebView flow to
+  /// resume, not to be dropped into a different app section.
+  final bool fromRetry;
 
   @override
   State<AetherWarmup> createState() => _AetherWarmupState();
@@ -99,6 +109,22 @@ class _AetherWarmupState extends State<AetherWarmup>
 
   Future<void> _boot() async {
     _advance(0.14);
+
+    // FAST OFFLINE PATH — check the OS radio state before touching Firebase,
+    // AppsFlyer or the config POST. When there is no radio at all, every one
+    // of those calls will time out for seconds (Firebase 4 s, AppsFlyer 9 s,
+    // POST 17 s) and the user stares at a loading bar for the whole window
+    // before we finally show SilenceScreen. Skipping straight to the
+    // no-wifi screen means the user sees it within one frame of the boot
+    // instead. Firebase/AppsFlyer are re-initialised naturally the next time
+    // the retry rebuilds AetherWarmup.
+    if (!await SignalProbe(Connectivity()).hasRadio()) {
+      agateLog(() => '[AGATE.warm] no radio at boot → SilenceScreen fast-path');
+      if (!mounted) return;
+      _showOffline();
+      return;
+    }
+
     // Firebase `getInitialMessage` MUST resolve before we look for a
     // cold-start URL — with FirebaseAppDelegateProxyEnabled=true (default)
     // Firebase eats the notification response and SceneDelegate never sees
@@ -114,8 +140,17 @@ class _AetherWarmupState extends State<AetherWarmup>
     // (a) SceneDelegate (works when FirebaseAppDelegateProxyEnabled=false or
     //     the OS delivered the tap to Scene before Firebase swizzled),
     // (b) Firebase getInitialMessage → vault.writePushUrl (the default path).
-    final coldUrl = await ArcTapReader.consume() ??
-        await widget.vault.consumePushUrl();
+    //
+    // Both paths run BEFORE we choose which URL wins — we always drain the
+    // vault as well, even if ArcTapReader already returned a URL. Otherwise
+    // the vault keeps a stale copy from `pulse.init()` that
+    // `StormChannel._consumePendingPush` fires on the NEXT
+    // `AppLifecycleState.resumed` (i.e., on the 2nd push tap the WebView
+    // silently reloads the previous session's URL before onMessageOpenedApp
+    // even delivers the new one). See gray_flow_lessons.md §12.
+    final tapUrl = await ArcTapReader.consume();
+    final vaultUrl = await widget.vault.consumePushUrl();
+    final coldUrl = tapUrl ?? vaultUrl;
     _advance(0.48);
     if (coldUrl != null && coldUrl.isNotEmpty) {
       agateLog(() => '[AGATE.warm] cold-start push → $coldUrl');
@@ -123,7 +158,7 @@ class _AetherWarmupState extends State<AetherWarmup>
       return;
     }
 
-    final decision = await widget.router.decide();
+    final decision = await widget.router.decide(fromRetry: widget.fromRetry);
     agateLog(() => '[AGATE.warm] decision=$decision');
     _advance(0.82);
 
@@ -226,6 +261,7 @@ class _AetherWarmupState extends State<AetherWarmup>
           pulse: widget.pulse,
           agent: widget.agent,
           onNativeReady: widget.onNativeReady,
+          fromRetry: true,
         ),
       ),
     ));

@@ -33,38 +33,53 @@ class AetherRouter {
 
   Future<GateDecision>? _pending;
 
-  Future<GateDecision> decide() {
-    return _pending ??= _decide().whenComplete(() => _pending = null);
+  /// `fromRetry` should be set to true when the caller has just verified
+  /// connectivity itself (e.g., SilenceScreen's Retry tap or auto-retry on
+  /// a live connectivity event). It:
+  ///   • skips the router's own `dnsProbe` step (iOS's DNS resolver takes
+  ///     up to ~1–3 s to settle after a wifi hand-off — a fresh
+  ///     `InternetAddress.lookup` reproducibly fails during that window
+  ///     even though the interface is fully up), and
+  ///   • treats a transport-level POST failure as `GateOffline` instead of
+  ///     `GateNative`, so a retry from the no-wifi screen never silently
+  ///     dumps the user into the native game just because the config
+  ///     endpoint could not be reached yet.
+  Future<GateDecision> decide({bool fromRetry = false}) {
+    return _pending ??=
+        _decide(fromRetry: fromRetry).whenComplete(() => _pending = null);
   }
 
-  Future<GateDecision> _decide() async {
+  Future<GateDecision> _decide({required bool fromRetry}) async {
     if (!gateEnabled) {
       agateLog(() => '[AGATE.route] creds not ready → native');
       return const GateNative();
     }
 
     final storedRoute = await vault.route();
-    agateLog(() => '[AGATE.route] stored=$storedRoute');
+    agateLog(() => '[AGATE.route] stored=$storedRoute fromRetry=$fromRetry');
 
     switch (storedRoute) {
       case GateRoute.web:
-        return _returningWeb();
+        return _returningWeb(fromRetry: fromRetry);
       case GateRoute.native:
         return _returningNative();
       case GateRoute.fresh:
-        return _firstDecision();
+        return _firstDecision(fromRetry: fromRetry);
     }
   }
 
   // ---------------------------------------------------------- fresh install
 
-  Future<GateDecision> _firstDecision() async {
+  Future<GateDecision> _firstDecision({bool fromRetry = false}) async {
     // 1. Radio + real reachability before touching AppsFlyer — see lessons §25.
     if (!await probe.hasRadio()) {
       agateLog(() => '[AGATE.route] no radio → offline (fresh stays fresh)');
       return const GateOffline();
     }
-    if (!await probe.dnsProbe()) {
+    // Skip the DNS gate when the caller (SilenceScreen retry) has already
+    // verified connectivity — iOS's DNS cache is reproducibly stale for a
+    // second or two after a wifi hand-off and would false-fail here.
+    if (!fromRetry && !await probe.dnsProbe()) {
       agateLog(() => '[AGATE.route] no dns → offline (fresh stays fresh)');
       return const GateOffline();
     }
@@ -96,6 +111,15 @@ class AetherRouter {
       return GateWeb(reply.destination!);
     }
 
+    // Transport-level failure (no HTTP status → no `message` from server).
+    // On the retry path we must NOT commit any route and must NOT drop the
+    // user into the native game — bounce back to SilenceScreen so the
+    // user's next Retry tap can try again once the network truly settles.
+    if (fromRetry && reply.message == null) {
+      agateLog(() => '[AGATE.route] retry POST transport-failed → offline');
+      return const GateOffline();
+    }
+
     // A "no data" answer only commits us to native when the POST ACTUALLY
     // carried attribution. If AppsFlyer was slow and the body had no
     // attribution keys (only the base identity fields), keep the route `fresh`
@@ -113,7 +137,7 @@ class AetherRouter {
 
   // ---------------------------------------------------- returning web install
 
-  Future<GateDecision> _returningWeb() async {
+  Future<GateDecision> _returningWeb({bool fromRetry = false}) async {
     if (!await probe.hasRadio()) return const GateOffline();
 
     // Race a fresh POST with the saved URL. If we already have a saved URL
@@ -126,7 +150,7 @@ class AetherRouter {
     }
 
     // No saved URL — do a live decision.
-    return _firstDecision();
+    return _firstDecision(fromRetry: fromRetry);
   }
 
   Future<void> _backgroundRefresh() async {
