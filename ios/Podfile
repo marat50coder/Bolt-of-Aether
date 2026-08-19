@@ -1,6 +1,7 @@
 platform :ios, '15.0'
 
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+install! 'cocoapods', :disable_input_output_paths => true
 
 project 'Runner', {
   'Debug' => :debug,
@@ -33,116 +34,17 @@ target 'Runner' do
   end
 end
 
-# Notification Service Extension for rich media pushes. Pinned so Firebase
-# resolves to the same major version as the Runner side; if `flutter pub get`
-# picks a different Firebase major, bump this pin to match.
-target 'BoltPushRelay' do
-  use_frameworks!
-  platform :ios, '15.0'
-  # Must match Firebase iOS SDK version chosen by firebase_core on the Runner
-  # side. Bump both together when firebase_core resolves to a newer major.
-  pod 'Firebase/Messaging', '12.17.0'
-end
+# BoltPushRelay (NSE) is intentionally NOT a CocoaPods target.
+# It used to pin `pod 'Firebase/Messaging'`, which collided with the
+# firebase-ios-sdk that Flutter 3.24+ injects via Swift Package Manager
+# (`Redefinition of module 'Firebase'`). The extension now downloads
+# rich-media attachments itself (see NotificationService.swift).
 
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
-  end
-
-  # ==========================================================
-  #  Strip Flutter's Swift Package Manager integration.
-  # ==========================================================
-  # Firebase ships as a CocoaPod (required by the BoltPushRelay NSE target
-  # that pins `pod 'Firebase/Messaging'`). Flutter 3.24+ additionally pulls
-  # firebase-ios-sdk in as an SPM package via
-  # `FlutterGeneratedPluginSwiftPackage`, and the two identical `module
-  # Firebase` declarations collide during the Xcode archive with
-  # `Redefinition of module 'Firebase'`.
-  #
-  # The env var / `flutter config --no-enable-swift-package-manager`
-  # switches only fire when the caller sets them BEFORE `flutter build ipa`.
-  # On some Codemagic UI-triggered workflows those settings are ignored and
-  # Flutter re-adds the SPM refs each build. Podfile `post_install` runs
-  # AFTER Flutter's "Adding Swift Package Manager integration..." step but
-  # BEFORE Xcode's archive step, so this is the last safe moment to undo
-  # the integration without needing any CI-side configuration.
-  #
-  # Implementation: full remove-from-project (not just `.clear` on the
-  # collections). A plain `.clear` leaves the underlying
-  # XCLocalSwiftPackageReference / XCSwiftPackageProductDependency
-  # objects in the project's objects dictionary, and any PBXBuildFile
-  # that referenced the SPM product becomes a dangling reference —
-  # Xcode 16 rejects that pbxproj with an immediate archive failure
-  # (`xcodebuild error 74`, "Xcode archive done. 3.6 s").
-  require 'xcodeproj'
-  require 'fileutils'
-  require 'set'
-
-  runner_project_path = File.expand_path('Runner.xcodeproj', __dir__)
-  if File.exist?(runner_project_path)
-    runner_project = Xcodeproj::Project.open(runner_project_path)
-
-    spm_isas = %w[
-      XCLocalSwiftPackageReference
-      XCRemoteSwiftPackageReference
-      XCSwiftPackageProductDependency
-    ]
-    spm_objects = runner_project.objects.select { |o| spm_isas.include?(o.isa) }
-    spm_uuids = spm_objects.map(&:uuid).to_set
-
-    # Snapshot the sizes before mutating so the notice below reports
-    # the truth even when only one of the two collections was populated.
-    removed_top = removed_target = 0
-
-    if runner_project.root_object.respond_to?(:package_references)
-      refs = runner_project.root_object.package_references
-      removed_top = refs.size
-      refs.clear
-    end
-
-    runner_project.targets.each do |target|
-      next unless target.respond_to?(:package_product_dependencies)
-      deps = target.package_product_dependencies
-      removed_target += deps.size
-      deps.clear
-    end
-
-    # PBXBuildFile rows the SPM add-integration inserted for the product.
-    # If we skip these, xcodebuild trips over "productRef of nil" during
-    # `PBXBuildFile.remove_from_project` cascade.
-    runner_project.objects.select { |o| o.isa == 'PBXBuildFile' }.each do |bf|
-      product = bf.respond_to?(:product_ref) ? bf.product_ref : nil
-      next unless product
-      next unless spm_uuids.include?(product.uuid)
-      bf.remove_from_project
-    end
-
-    # Now safe to delete the SPM object records themselves.
-    spm_objects.each { |o| o.remove_from_project }
-
-    if removed_top + removed_target + spm_objects.size > 0
-      runner_project.save
-      Pod::UI.notice(
-        "Stripped SPM integration from Runner.xcodeproj — " \
-        "packageReferences=#{removed_top}, " \
-        "packageProductDependencies=#{removed_target}, " \
-        "orphan objects=#{spm_objects.size}"
-      )
-    end
-  end
-
-  # Kill the SPM caches on disk so Xcode does not pick up firebase-ios-sdk
-  # from `build/ios/SourcePackages` or the shared `swiftpm/` folder either.
-  # Also nuke the Flutter-generated local package on disk so a subsequent
-  # `flutter build ipa` in the same VM does not re-materialise it.
-  ['../build/ios/SourcePackages',
-   'Runner.xcodeproj/project.xcworkspace/xcshareddata/swiftpm',
-   'Flutter/ephemeral/FlutterGeneratedPluginSwiftPackage',
-   '../.dart_tool/package_config.json.disable-swift-package-manager'].each do |rel|
-    abs = File.expand_path(rel, __dir__)
-    if File.exist?(abs)
-      FileUtils.rm_rf(abs)
-      Pod::UI.notice "Removed stale SPM artifact: #{abs}"
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
     end
   end
 end
