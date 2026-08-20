@@ -56,6 +56,7 @@ class _StormChannelState extends State<StormChannel>
   int _redirectAttempts = 0;
   String? _lastMainFrame;
   bool _offlineShown = false;
+  int _transientReloadAttempts = 0;
 
   @override
   void initState() {
@@ -145,6 +146,7 @@ class _StormChannelState extends State<StormChannel>
       },
       onPageFinished: (_) {
         _redirectAttempts = 0;
+        _transientReloadAttempts = 0;
         _primeShell();
         _scheduleResizeSettle();
       },
@@ -194,23 +196,89 @@ class _StormChannelState extends State<StormChannel>
       return;
     }
     if (!mainFrame) return;
-    // Confirm the outage before routing away — WebView load errors can be
-    // transient, and a probe prevents flapping to the offline screen while
-    // the network is actually fine. Matches the reference RoostPortal /
-    // PortalView.
-    _showOfflineAfterProbe();
+    _handleMainFrameFailure(error);
   }
 
-  Future<void> _showOfflineAfterProbe() async {
+  /// Transient-vs-real outage arbiter for main-frame load failures.
+  ///
+  /// Right after a wifi hand-off (auto-retry from SilenceScreen ↑↑↑) the
+  /// OS reports the interface UP well before DHCP + DNS + default route
+  /// are actually usable. WKWebView then reports -1004 / -1005 / -1009 on
+  /// the very first `loadRequest` — but the connection is genuinely fine
+  /// a second later. The previous code called `dnsProbe` once and, if it
+  /// failed on the same stale resolver, bounced the user straight to
+  /// SilenceScreen. The result the user saw: "loading finishes, then no
+  /// wifi again even though I have internet".
+  ///
+  /// This variant retries the LOAD (not just the probe) with backoff.
+  /// The DNS probe now only decides whether to keep waiting for the next
+  /// reload attempt or to give up immediately — it never single-handedly
+  /// forces the offline screen.
+  Future<void> _handleMainFrameFailure(WebResourceError error) async {
     if (_offlineShown) return;
-    bool online = true;
-    try {
-      online = await SignalProbe(_connectivity).dnsProbe();
-    } catch (_) {
-      online = false;
+    const transientCodes = <int>{
+      -1001, // NSURLErrorTimedOut
+      -1003, // NSURLErrorCannotFindHost
+      -1004, // NSURLErrorCannotConnectToHost
+      -1005, // NSURLErrorNetworkConnectionLost
+      -1009, // NSURLErrorNotConnectedToInternet
+      -1200, // NSURLErrorSecureConnectionFailed (transient on wifi hand-off)
+    };
+    final transient = transientCodes.contains(error.errorCode);
+
+    // Full connectivity blackout? Go straight to SilenceScreen — no point
+    // reloading a URL when the radio itself is off.
+    final hasRadio = await SignalProbe(_connectivity).hasRadio();
+    if (!hasRadio) {
+      agateLog(() =>
+          '[AGATE.wv] mainframe error ${error.errorCode} — no radio → offline');
+      _goOffline();
+      return;
     }
-    if (online) return;
-    _goOffline();
+
+    // Non-transient error while radio is up (bad URL, TLS pin mismatch,
+    // 4xx / 5xx from the origin, etc.) — retrying would just loop. Probe
+    // once so a real outage still surfaces, otherwise stay on the shell.
+    if (!transient) {
+      final online = await SignalProbe(_connectivity).dnsProbe();
+      if (!online) _goOffline();
+      return;
+    }
+
+    // Transient error path: retry the load with backoff. Only after every
+    // retry has failed do we consider the outage real and probe DNS.
+    const maxAttempts = 4;
+    const backoffs = <Duration>[
+      Duration(milliseconds: 800),
+      Duration(milliseconds: 1400),
+      Duration(milliseconds: 2200),
+      Duration(milliseconds: 3200),
+    ];
+    if (_transientReloadAttempts >= maxAttempts) {
+      final online = await SignalProbe(_connectivity).dnsProbe();
+      if (!online) {
+        agateLog(() =>
+            '[AGATE.wv] transient exhausted, dns dead → offline');
+        _goOffline();
+      } else {
+        agateLog(() =>
+            '[AGATE.wv] transient exhausted but dns ok — staying on shell');
+        _transientReloadAttempts = 0;
+      }
+      return;
+    }
+    final wait = backoffs[_transientReloadAttempts];
+    _transientReloadAttempts += 1;
+    agateLog(() =>
+        '[AGATE.wv] transient ${error.errorCode}, reload attempt $_transientReloadAttempts/$maxAttempts in ${wait.inMilliseconds}ms');
+    await Future<void>.delayed(wait);
+    if (!mounted || _offlineShown) return;
+    final target = _lastMainFrame ?? widget.destination;
+    try {
+      await _web.loadRequest(Uri.parse(target));
+    } catch (e) {
+      agateLog(() => '[AGATE.wv] reload threw: $e');
+    }
   }
 
   Future<void> _goOffline() async {

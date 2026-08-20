@@ -103,7 +103,34 @@ class AetherRouter {
       locale: _locale(),
       afIdOverride: null,
     );
-    final reply = await dispatch.send(body);
+    // 5. Dispatch, with a bounded retry loop that ONLY protects against
+    //    transport failure right after a wifi hand-off. `SilenceScreen`
+    //    auto-navigates the moment `onConnectivityChanged` fires and iOS
+    //    raises that event before DHCP + DNS + default route are fully up
+    //    (~1–2 s on wifi, up to ~4 s on cellular). Without retries, the
+    //    first POST hits an ENOTFOUND/connect-timeout, dispatch returns
+    //    denied with `message == null`, and the retry path below bounces
+    //    the user right back to SilenceScreen even though the network is
+    //    up. A short backoff sequence gives the stack time to settle
+    //    without introducing an extra "loading" phase on the happy path.
+    final maxAttempts = fromRetry ? 4 : 1;
+    const backoffs = <Duration>[
+      Duration(milliseconds: 700),
+      Duration(milliseconds: 1200),
+      Duration(milliseconds: 1600),
+    ];
+    var reply = await dispatch.send(body);
+    var attempt = 1;
+    while (attempt < maxAttempts &&
+        !reply.granted &&
+        reply.message == null) {
+      final wait = backoffs[(attempt - 1).clamp(0, backoffs.length - 1)];
+      agateLog(() =>
+          '[AGATE.route] POST transport-failed, retry ${attempt + 1}/$maxAttempts in ${wait.inMilliseconds}ms');
+      await Future<void>.delayed(wait);
+      reply = await dispatch.send(body);
+      attempt += 1;
+    }
 
     if (reply.granted && reply.destination != null) {
       await vault.writeSavedUrl(reply.destination!, expiresAt: reply.expiresAt);
@@ -116,7 +143,8 @@ class AetherRouter {
     // user into the native game — bounce back to SilenceScreen so the
     // user's next Retry tap can try again once the network truly settles.
     if (fromRetry && reply.message == null) {
-      agateLog(() => '[AGATE.route] retry POST transport-failed → offline');
+      agateLog(() =>
+          '[AGATE.route] retry POST transport-failed after $attempt attempts → offline');
       return const GateOffline();
     }
 

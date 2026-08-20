@@ -1,22 +1,27 @@
-import 'dart:async';
-
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/app_palette.dart';
+import '../transport/signal_probe.dart';
 
-/// No-Internet screen. Takes a builder for its Retry button so it never
-/// captures a stale parent context (see `gray_flow_lessons.md` §3).
+/// No-Internet screen. Retry re-runs the whole pipeline by pushing a fresh
+/// [retryBuilder] widget from THIS page's mounted context — never a captured
+/// parent context, which would be defunct after pushReplacement.
 ///
-/// Retry behaviour matches the reference sibling (Velvet-Jester-Spin
-/// `NoSignalScreen`): the first tap does an instant OS-level connectivity
-/// check (`Connectivity().checkConnectivity()`, SCNetworkReachability under
-/// the hood on iOS), and hands off to the retry builder the moment ANY
-/// interface reports up. If not, the button briefly shows a spinner and
-/// then flags "No connection yet" so the user is never left wondering.
-/// Also auto-retries when the connectivity stream reports a live interface
-/// — the button does not need to be spammed.
+/// Behaviour deliberately mirrors the reference siblings
+/// (EggRunnerAdventure `EmptyAirPage`, Ashveil_Ascent `NoWifiPage`,
+/// Plumepark_Sprint `NoSignalScreen`):
+///   • NO `onConnectivityChanged` auto-retry. iOS raises that event the
+///     instant the wifi interface reports UP, well before DHCP + DNS +
+///     default route are usable. Auto-navigating on the edge ran the whole
+///     warmup pipeline against a raw stack, WKWebView returned -1004 /
+///     -1005 / -1009, StormChannel bounced back to SilenceScreen, and the
+///     next connectivity event repeated the loop — the user saw "loading
+///     then nowifi again despite having internet".
+///   • Retry does a REAL DNS probe (public hosts, 3 s timeout each) instead
+///     of trusting `Connectivity.checkConnectivity()`. Only when the probe
+///     succeeds do we navigate.
 class SilenceScreen extends StatefulWidget {
   const SilenceScreen({super.key, required this.retryBuilder});
 
@@ -27,8 +32,7 @@ class SilenceScreen extends StatefulWidget {
 }
 
 class _SilenceScreenState extends State<SilenceScreen> {
-  final _connectivity = Connectivity();
-  StreamSubscription<List<ConnectivityResult>>? _watch;
+  final _probe = SignalProbe(Connectivity());
   bool _checking = false;
   bool _stillOffline = false;
   bool _navigated = false;
@@ -41,43 +45,29 @@ class _SilenceScreenState extends State<SilenceScreen> {
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-    // Auto-recover the moment iOS reports any live interface — the user
-    // does not have to touch Retry the exact second WiFi comes back.
-    _watch = _connectivity.onConnectivityChanged.listen((results) {
-      if (_navigated || _checking) return;
-      final live = results.any((r) => r != ConnectivityResult.none);
-      if (live) unawaited(_retry(auto: true));
-    });
   }
 
-  @override
-  void dispose() {
-    _watch?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _retry({bool auto = false}) async {
+  Future<void> _retry() async {
     if (_checking || _navigated) return;
-    if (!auto) HapticFeedback.lightImpact();
+    HapticFeedback.lightImpact();
     setState(() {
       _checking = true;
       _stillOffline = false;
     });
-    // Fast path: trust connectivity_plus. If ANY radio is up we hand off
-    // to the retry builder immediately. WebView will re-attempt the actual
-    // load and bounce back here if the network is truly dead. A DNS probe
-    // here would block for up to ~7 s right after WiFi returns because
-    // iOS's DNS cache is stale — that is the "nothing happens on first
-    // tap" bug the user was hitting.
-    var live = false;
+    var online = false;
     try {
-      final results = await _connectivity.checkConnectivity();
-      live = results.any((r) => r != ConnectivityResult.none);
+      // Real reachability — not `checkConnectivity()`. iOS reports the
+      // interface UP a beat before DNS is actually usable, so trusting
+      // the connectivity result alone leads straight back here after the
+      // next WKWebView load. `dnsProbe` retries up to twice with 500 ms
+      // in between (see SignalProbe), so a brief-stale resolver still
+      // recovers within this call.
+      online = await _probe.hasRadio() && await _probe.dnsProbe();
     } catch (_) {
-      live = false;
+      online = false;
     }
     if (!mounted) return;
-    if (live) {
+    if (online) {
       _navigated = true;
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
