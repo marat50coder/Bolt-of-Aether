@@ -110,16 +110,23 @@ class _AetherWarmupState extends State<AetherWarmup>
   Future<void> _boot() async {
     _advance(0.14);
 
-    // FAST OFFLINE PATH — check the OS radio state before touching Firebase,
-    // AppsFlyer or the config POST. When there is no radio at all, every one
-    // of those calls will time out for seconds (Firebase 4 s, AppsFlyer 9 s,
-    // POST 17 s) and the user stares at a loading bar for the whole window
-    // before we finally show SilenceScreen. Skipping straight to the
-    // no-wifi screen means the user sees it within one frame of the boot
-    // instead. Firebase/AppsFlyer are re-initialised naturally the next time
-    // the retry rebuilds AetherWarmup.
-    if (!await SignalProbe(Connectivity()).hasRadio()) {
-      agateLog(() => '[AGATE.warm] no radio at boot → SilenceScreen fast-path');
+    // FAST OFFLINE PATH — check reachability before touching Firebase,
+    // AppsFlyer or the config POST. Without this the pipeline would eat
+    // ~14 s of timeouts (Firebase init 4 s + AppsFlyer wait 9 s + POST 17 s
+    // + finalize 0.6 s) with the loading art on screen before finally
+    // showing SilenceScreen. Two-stage check mirrors the sibling references
+    // (`EggRunnerAdventure/hatch_coordinator._firstDecision`):
+    //   • `hasRadio` — cheap OS flag, catches "airplane mode / wifi off".
+    //   • `quickReach` — single DNS lookup with an 800 ms timeout, no
+    //     retry. Catches "wifi UP but no packets" (dead hotspot, captive
+    //     portal, VPN dead). On a truly offline device the lookup throws
+    //     SocketException within ~200 ms so the SilenceScreen still feels
+    //     instant.
+    // Firebase/AppsFlyer initialise naturally the next time the retry
+    // rebuilds AetherWarmup, once the network is actually up.
+    final bootProbe = SignalProbe(Connectivity());
+    if (!await bootProbe.quickReach()) {
+      agateLog(() => '[AGATE.warm] offline at boot → SilenceScreen fast-path');
       if (!mounted) return;
       _showOffline();
       return;

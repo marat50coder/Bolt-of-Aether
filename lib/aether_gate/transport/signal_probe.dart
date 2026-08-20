@@ -56,6 +56,30 @@ class SignalProbe {
     return false;
   }
 
+  /// One-shot reachability check — a single DNS lookup with a tight timeout
+  /// and NO retry. Meant for the boot fast-path: the app must decide whether
+  /// to show the loading art or the SilenceScreen "within a frame" of launch
+  /// instead of waiting for Firebase init + AppsFlyer + POST + the router's
+  /// own dnsProbe (~14 s worst case) before finally deciding "offline".
+  ///
+  /// When the device is truly offline `InternetAddress.lookup` throws a
+  /// `SocketException` almost instantly (<200 ms), so this method returns
+  /// false fast enough for the SilenceScreen to feel instant. When the
+  /// resolver is merely slow (real network coming up) the timeout caps the
+  /// wait so we do not stall the splash either.
+  Future<bool> quickReach({
+    Duration timeout = const Duration(milliseconds: 800),
+  }) async {
+    if (!await hasRadio()) return false;
+    try {
+      final hits =
+          await InternetAddress.lookup('gstatic.com').timeout(timeout);
+      return hits.isNotEmpty && hits.first.rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Stream<bool> onChange() {
     return _connectivity.onConnectivityChanged
         .map((flat) => flat.any((r) => r != ConnectivityResult.none));
