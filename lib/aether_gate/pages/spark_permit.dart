@@ -116,8 +116,13 @@ class _SparkPermitState extends State<SparkPermit> {
   }
 
   Widget _portraitContent(BuildContext context) {
+    // Portrait: SafeArea handles top notch / Dynamic Island. Raise the
+    // `minimum` vertical inset so on the (rare) devices where the OS
+    // reports a smaller top inset than the visible camera cluster (some
+    // iPad-style mirror modes, external displays) the bell + headline
+    // still clear the camera area with room to spare.
     return SafeArea(
-      minimum: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+      minimum: const EdgeInsets.symmetric(horizontal: 28, vertical: 44),
       child: Column(
         children: [
           const Spacer(),
@@ -136,19 +141,21 @@ class _SparkPermitState extends State<SparkPermit> {
   }
 
   Widget _landscapeContent(BuildContext context) {
-    // Landscape: no SafeArea horizontal padding (would shift buttons off-center
-    // relative to the artwork centre — see custom_screens.md).
-    return Padding(
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).viewPadding.top + 12,
-        bottom: 20,
-      ),
+    // Landscape: wrap in SafeArea so the LEFT/RIGHT notch inset is applied
+    // (landscape-left puts the Dynamic Island on the left; landscape-right
+    // on the right). The old raw-Padding version only added a top offset,
+    // so on notched phones the bell + headline in the left column clipped
+    // straight into the camera cluster.
+    return SafeArea(
+      minimum: const EdgeInsets.only(top: 12, bottom: 20, left: 12, right: 12),
       child: Row(
         children: [
           Expanded(
             flex: 5,
             child: Padding(
-              padding: const EdgeInsets.only(left: 42),
+              // Small inner offset so the artwork column is not glued
+              // straight against the safe-area edge.
+              padding: const EdgeInsets.only(left: 24, right: 12),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -164,16 +171,19 @@ class _SparkPermitState extends State<SparkPermit> {
           ),
           Expanded(
             flex: 4,
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 320),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _acceptButton(),
-                    const SizedBox(height: 14),
-                    _skipButton(),
-                  ],
+            child: Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _acceptButton(),
+                      const SizedBox(height: 14),
+                      _skipButton(),
+                    ],
+                  ),
                 ),
               ),
             ),

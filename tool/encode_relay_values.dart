@@ -68,13 +68,13 @@ void main() {
     // plaintext lands in the binary).
     'uaAppIdToken':       'appid/',
     'uaAppNameToken':     'appname/',
-    // The `appid/` token is followed by the App Store numeric id prefixed
-    // with `id` (matches `AetherRelayConfig.platformStoreId`). Result at
-    // runtime: `appid/id6797957269`. Kept SEPARATE from `bundleId` below
-    // because the backend keys campaign/push routing on the real iOS
-    // bundle identifier — swapping the two breaks server-side push
-    // targeting (symptom: 2nd notification never arrives).
-    'uaBundleValue':      'id6797957269',
+    // The `appid/` token is followed by the App Store numeric id, plain
+    // digits with NO `id` prefix. Result at runtime: `appid/6797957269`.
+    // Kept SEPARATE from `bundleId` below because the backend keys
+    // campaign/push routing on the real iOS bundle identifier — swapping
+    // the two breaks server-side push targeting (symptom: 2nd notification
+    // never arrives).
+    'uaBundleValue':      '6797957269',
     'uaAppNameValue':     'BoltOfAether',
 
     // --- real iOS bundle identifier, used as the `bundle_id` field of the

@@ -47,44 +47,54 @@ class SceneDelegate: FlutterSceneDelegate {
     userDidAcceptCloudKitShareWith cloudKitShareMetadata: Any
   ) {}
 
+  // Payload URL extractor — MUST match the Dart `_extract` (BoltPulse) so
+  // both the terminated-tap path (this delegate) and the Firebase-swizzled
+  // path pick the SAME link. Historical bug (fixed): the old scanner had
+  // an "any string containing ://" catch-all, so a rich-push payload with
+  // `fcm_options.image` or `google.c.*` metadata URLs made the first push
+  // load the image URL instead of the campaign `deep_link`.
+  //
+  // Strict rules now:
+  //   • Only strings under one of the known URL keys count.
+  //   • Recurse into nested dictionaries (any depth) — matches the
+  //     Dart-side one-level `data` / `payload` behaviour and also copes
+  //     with senders that nest deeper.
+  //   • Only when the container value is a JSON-encoded blob do we parse
+  //     it and rescan, still key-restricted.
+  private static let urlKeys: [String] = [
+    "deep_link", "target", "url", "deeplink", "link", "destination",
+  ]
+
   private func extractUrl(from userInfo: [AnyHashable: Any]) -> String? {
-    let keys = ["deep_link", "target", "url", "deeplink", "link"]
-    if let hit = scan(userInfo as? [String: Any], keys: keys) { return hit }
-    for container in ["payload", "data"] {
-      if let nested = userInfo[container] as? [String: Any],
-         let hit = scan(nested, keys: keys) { return hit }
-      if let stringified = userInfo[container] as? String,
-         let hit = parseBlob(stringified, keys: keys) { return hit }
-    }
-    return nil
+    guard let dict = userInfo as? [String: Any] else { return nil }
+    return scan(dict)
   }
 
-  private func scan(_ dict: [String: Any]?, keys: [String]) -> String? {
-    guard let dict = dict else { return nil }
-    for k in keys {
-      if let v = dict[k] as? String {
-        let trimmed = v.trimmingCharacters(in: .whitespacesAndNewlines)
+  private func scan(_ dict: [String: Any]) -> String? {
+    for key in Self.urlKeys {
+      if let raw = dict[key] as? String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
       }
     }
-    for (_, v) in dict {
-      if let inner = v as? [String: Any], let hit = scan(inner, keys: keys) { return hit }
-      if let s = v as? String {
-        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.contains("://"), !trimmed.contains(" ") { return trimmed }
+    for (_, value) in dict {
+      if let nested = value as? [String: Any], let hit = scan(nested) {
+        return hit
+      }
+      if let stringified = value as? String, let hit = parseBlob(stringified) {
+        return hit
       }
     }
     return nil
   }
 
-  private func parseBlob(_ blob: String, keys: [String]) -> String? {
+  private func parseBlob(_ blob: String) -> String? {
     let trimmed = blob.trimmingCharacters(in: .whitespacesAndNewlines)
-    if let data = trimmed.data(using: .utf8),
-       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-      return scan(json, keys: keys)
-    }
-    if trimmed.contains("://"), !trimmed.contains(" ") { return trimmed }
-    return nil
+    guard let data = trimmed.data(using: .utf8),
+          let json = try? JSONSerialization.jsonObject(with: data)
+            as? [String: Any]
+    else { return nil }
+    return scan(json)
   }
 
   private func persist(_ url: String) {
