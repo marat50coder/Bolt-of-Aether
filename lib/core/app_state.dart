@@ -38,6 +38,7 @@ class AppState extends ChangeNotifier {
   Bolt? _daily;
   String _todayKey = '';
   int _streak = 0;
+  int _visitStreak = 0;
   int _totalSwipes = 0;
   bool _dailyClaimed = false;
   bool _haptics = true;
@@ -80,10 +81,35 @@ class AppState extends ChangeNotifier {
     report(0.90, 'Aligning today\'s bolt');
     await state._resolveDaily();
 
+    report(0.94, 'Counting the days');
+    await state._rollVisitStreak();
+
     report(0.97, 'Shuffling the deck');
     state._rebuildDeck();
 
     return state;
+  }
+
+  /// Passive "days-in-a-row-opened" streak. Runs once per bootstrap so the
+  /// first launch of every new calendar day advances (or resets) the count.
+  /// Extra launches on the same day are no-ops.
+  ///
+  /// Rules:
+  ///   • same day as the previous visit → keep the current count,
+  ///   • exactly one day later          → +1,
+  ///   • two or more days gap           → reset to 1 (today still counts).
+  Future<void> _rollVisitStreak() async {
+    final today = _dayKey(DateTime.now());
+    final last = _storage.lastVisitDay;
+    if (last == today) {
+      _visitStreak = _storage.visitStreak;
+      return;
+    }
+    final yesterday = _dayKey(DateTime.now().subtract(const Duration(days: 1)));
+    final previous = _storage.visitStreak;
+    _visitStreak = last == yesterday ? previous + 1 : 1;
+    await _storage.setVisitStreak(_visitStreak);
+    await _storage.setLastVisitDay(today);
   }
 
   Future<void> _loadLibrary() async {
@@ -134,6 +160,7 @@ class AppState extends ChangeNotifier {
     _motion = _storage.motion;
     _nickname = _storage.nickname;
     _streak = _storage.streak;
+    _visitStreak = _storage.visitStreak;
     _totalSwipes = _storage.totalSwipes;
 
     _eveningEntries
@@ -203,6 +230,7 @@ class AppState extends ChangeNotifier {
   Bolt? get dailyBolt => _daily;
   bool get dailyClaimed => _dailyClaimed;
   int get streak => _streak;
+  int get visitStreak => _visitStreak;
   int get totalSwipes => _totalSwipes;
   bool get haptics => _haptics;
   bool get motion => _motion;
@@ -571,6 +599,7 @@ class AppState extends ChangeNotifier {
       ..clear()
       ..addAll(BoltTopic.values);
     _streak = 0;
+    _visitStreak = 0;
     _totalSwipes = 0;
     _dailyClaimed = false;
     _haptics = true;
@@ -591,6 +620,7 @@ class AppState extends ChangeNotifier {
       }
     }
     await _resolveDaily();
+    await _rollVisitStreak();
     _rebuildDeck();
     notifyListeners();
   }

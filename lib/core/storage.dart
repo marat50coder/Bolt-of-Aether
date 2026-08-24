@@ -20,6 +20,8 @@ class Storage {
   static const _kDailyClaimed = 'daily_claimed';
   static const _kStreak = 'streak';
   static const _kLastOpen = 'last_open';
+  static const _kVisitStreak = 'visit_streak';
+  static const _kLastVisitDay = 'last_visit_day';
   static const _kTotalSwipes = 'total_swipes';
   static const _kHaptics = 'haptics';
   static const _kMotion = 'motion';
@@ -79,6 +81,16 @@ class Storage {
 
   String? get lastOpenDay => _prefs.getString(_kLastOpen);
   Future<void> setLastOpenDay(String value) => _prefs.setString(_kLastOpen, value);
+
+  /// Passive "days-in-a-row-opened" streak. Distinct from [streak], which is
+  /// gated on the user tapping "Unleash today's bolt" — this one advances
+  /// automatically on the first bootstrap of every new calendar day.
+  int get visitStreak => _prefs.getInt(_kVisitStreak) ?? 0;
+  Future<void> setVisitStreak(int value) => _prefs.setInt(_kVisitStreak, value);
+
+  String? get lastVisitDay => _prefs.getString(_kLastVisitDay);
+  Future<void> setLastVisitDay(String value) =>
+      _prefs.setString(_kLastVisitDay, value);
 
   int get totalSwipes => _prefs.getInt(_kTotalSwipes) ?? 0;
   Future<void> setTotalSwipes(int value) => _prefs.setInt(_kTotalSwipes, value);

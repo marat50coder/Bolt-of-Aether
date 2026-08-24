@@ -93,9 +93,11 @@ class DailyScreen extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             AetherTag(
-              label: '${state.streak} day streak',
-              icon: Icons.local_fire_department_rounded,
-              color: AetherColors.goldLight,
+              label: state.visitStreak <= 1
+                  ? '${state.visitStreak} day'
+                  : '${state.visitStreak} days in a row',
+              icon: Icons.bolt_rounded,
+              color: AetherColors.electric,
               dense: true,
             ),
           ],
