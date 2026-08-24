@@ -26,6 +26,7 @@ class Storage {
   static const _kHaptics = 'haptics';
   static const _kMotion = 'motion';
   static const _kNickname = 'nickname';
+  static const _kAvatarPath = 'avatar_path';
 
   // ---------------------------------------------------------- sleep ritual
   static const _kEveningEntries = 'evening_entries';
@@ -103,6 +104,14 @@ class Storage {
 
   String get nickname => _prefs.getString(_kNickname) ?? 'You';
   Future<void> setNickname(String value) => _prefs.setString(_kNickname, value);
+
+  /// Absolute path to the user-chosen avatar image inside the app's
+  /// documents directory. Empty string means "no avatar set — show the
+  /// initial-letter placeholder".
+  String get avatarPath => _prefs.getString(_kAvatarPath) ?? '';
+  Future<void> setAvatarPath(String value) =>
+      _prefs.setString(_kAvatarPath, value);
+  Future<void> clearAvatarPath() => _prefs.remove(_kAvatarPath);
 
   // ---------------------------------------------------------- sleep ritual
 

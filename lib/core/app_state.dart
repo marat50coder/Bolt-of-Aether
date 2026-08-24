@@ -44,6 +44,7 @@ class AppState extends ChangeNotifier {
   bool _haptics = true;
   bool _motion = true;
   String _nickname = 'You';
+  String _avatarPath = '';
 
   // Sleep Ritual: everything below is typed in by hand, never read from a
   // health API or the OS — the feature is fully offline and manual.
@@ -159,6 +160,13 @@ class AppState extends ChangeNotifier {
     _haptics = _storage.haptics;
     _motion = _storage.motion;
     _nickname = _storage.nickname;
+    // Avatar file may have been wiped externally (iOS backup restore, the
+    // Files app etc.), so verify existence before advertising the path —
+    // otherwise the CircleAvatar would flash a broken image.
+    final storedAvatar = _storage.avatarPath;
+    _avatarPath = storedAvatar.isNotEmpty && File(storedAvatar).existsSync()
+        ? storedAvatar
+        : '';
     _streak = _storage.streak;
     _visitStreak = _storage.visitStreak;
     _totalSwipes = _storage.totalSwipes;
@@ -235,6 +243,8 @@ class AppState extends ChangeNotifier {
   bool get haptics => _haptics;
   bool get motion => _motion;
   String get nickname => _nickname;
+  String get avatarPath => _avatarPath;
+  bool get hasAvatar => _avatarPath.isNotEmpty;
   int get skippedCount => _skipped.length;
 
   List<CommunityPost> get feed {
@@ -490,6 +500,37 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Copies the picked/captured image into the media sandbox and swaps
+  /// it in as the user's avatar. Also removes any previous avatar file
+  /// so the media directory doesn't grow with every retake.
+  Future<void> setAvatarFromFile(String sourcePath) async {
+    if (sourcePath.isEmpty) return;
+    final adopted = await adoptMedia(sourcePath, 'avatar');
+    final previous = _avatarPath;
+    _avatarPath = adopted;
+    await _storage.setAvatarPath(adopted);
+    if (previous.isNotEmpty && previous != adopted) {
+      try {
+        final oldFile = File(previous);
+        if (oldFile.existsSync()) oldFile.deleteSync();
+      } catch (_) {}
+    }
+    notifyListeners();
+  }
+
+  /// Removes the avatar and reverts to the initial-letter placeholder.
+  Future<void> clearAvatar() async {
+    if (_avatarPath.isEmpty) return;
+    final previous = _avatarPath;
+    _avatarPath = '';
+    await _storage.clearAvatarPath();
+    try {
+      final oldFile = File(previous);
+      if (oldFile.existsSync()) oldFile.deleteSync();
+    } catch (_) {}
+    notifyListeners();
+  }
+
   // ------------------------------------------------------------ sleep ritual
 
   /// One entry per evening: saving again the same day overwrites it.
@@ -605,6 +646,7 @@ class AppState extends ChangeNotifier {
     _haptics = true;
     _motion = true;
     _nickname = 'You';
+    _avatarPath = '';
     _eveningEntries.clear();
     _dreamEntries.clear();
     _lastMorningDate = null;

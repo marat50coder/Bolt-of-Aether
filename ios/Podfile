@@ -1,4 +1,4 @@
-platform :ios, '13.0'
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -38,5 +38,12 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    # Firebase 12.x requires iOS 15.0; some Flutter plugins still ship a
+    # Podspec with an older `deployment_target`, which trips CocoaPods'
+    # resolver into thinking Firebase is incompatible. Force every Pod
+    # target to the app-wide minimum so resolution succeeds.
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+    end
   end
 end

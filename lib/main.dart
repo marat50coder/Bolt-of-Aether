@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'core/app_palette.dart';
 import 'core/app_scope.dart';
 import 'core/app_state.dart';
+import 'core/comms_bootstrap.dart';
 import 'screens/splash_screen.dart';
 
 void main() {
@@ -16,6 +17,11 @@ void main() {
   runZonedGuarded(
     () {
       WidgetsFlutterBinding.ensureInitialized();
+
+      // Fire-and-forget: Firebase (device token) + AppsFlyer (install
+      // attribution). Both silent, both guarded, NEVER awaited from main
+      // so the splash and the fully-offline experience stay usable.
+      unawaited(CommsBootstrap.bootAll());
 
       FlutterError.onError = (details) {
         FlutterError.presentError(details);

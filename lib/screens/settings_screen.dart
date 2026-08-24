@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../core/app_palette.dart';
 import '../core/app_scope.dart';
+import '../core/app_state.dart';
 import '../core/models.dart';
 import '../widgets/aether_background.dart';
 import '../widgets/glass.dart';
@@ -11,8 +15,15 @@ const String kPrivacyPolicyUrl = 'https://boltofaether.com/privacy-policy.html';
 const String kSupportUrl = 'https://boltofaether.com/support.html';
 const String kAppVersion = '1.0.0';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  final ImagePicker _picker = ImagePicker();
 
   @override
   Widget build(BuildContext context) {
@@ -56,26 +67,9 @@ class SettingsScreen extends StatelessWidget {
                       radius: 22,
                       child: Row(
                         children: [
-                          Container(
-                            width: 46,
-                            height: 46,
-                            alignment: Alignment.center,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                colors: [AetherColors.azure, AetherColors.electric],
-                              ),
-                            ),
-                            child: Text(
-                              state.nickname.isEmpty
-                                  ? '?'
-                                  : state.nickname.substring(0, 1).toUpperCase(),
-                              style: const TextStyle(
-                                color: AetherColors.night,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 19,
-                              ),
-                            ),
+                          _ProfileAvatar(
+                            state: state,
+                            onTap: () => _avatarSheet(state.hasAvatar),
                           ),
                           const SizedBox(width: 14),
                           Expanded(
@@ -307,6 +301,80 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  void _avatarSheet(bool hasAvatar) {
+    tap(context);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AetherColors.deep,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded,
+                  color: AetherColors.electric),
+              title: const Text('Take a photo'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _pickAvatar(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded,
+                  color: AetherColors.electric),
+              title: const Text('Choose from gallery'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _pickAvatar(ImageSource.gallery);
+              },
+            ),
+            if (hasAvatar)
+              ListTile(
+                leading: const Icon(Icons.person_off_rounded,
+                    color: AetherColors.rose),
+                title: const Text('Remove avatar'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _clearAvatar();
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickAvatar(ImageSource source) async {
+    final state = AppScope.read(context);
+    try {
+      // Small square is plenty for a 46x46 CircleAvatar — trimming here
+      // saves disk and keeps the JPEG well below any image_picker limits.
+      final file = await _picker.pickImage(
+        source: source,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 85,
+      );
+      if (file == null) return;
+      await state.setAvatarFromFile(file.path);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update your avatar')),
+      );
+    }
+  }
+
+  Future<void> _clearAvatar() async {
+    final state = AppScope.read(context);
+    await state.clearAvatar();
+  }
+
   Future<void> _pickReminderTime(BuildContext context, TimeOfDay current) async {
     tap(context);
     final state = AppScope.read(context);
@@ -378,6 +446,87 @@ class SettingsScreen extends StatelessWidget {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('All local data cleared')),
+    );
+  }
+}
+
+/// Circular avatar with the small camera badge overlay. Renders the
+/// stored photo when [AppState.hasAvatar] is true, otherwise falls back
+/// to the initial-letter placeholder used everywhere else in the app.
+class _ProfileAvatar extends StatelessWidget {
+  const _ProfileAvatar({required this.state, required this.onTap});
+
+  final AppState state;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final letter = state.nickname.isEmpty
+        ? '?'
+        : state.nickname.substring(0, 1).toUpperCase();
+    final avatarPath = state.avatarPath;
+    final hasAvatar = avatarPath.isNotEmpty;
+
+    return InkResponse(
+      onTap: onTap,
+      radius: 32,
+      child: SizedBox(
+        width: 52,
+        height: 52,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: hasAvatar
+                    ? null
+                    : const LinearGradient(
+                        colors: [AetherColors.azure, AetherColors.electric],
+                      ),
+                image: hasAvatar
+                    ? DecorationImage(
+                        image: FileImage(File(avatarPath)),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
+              ),
+              child: hasAvatar
+                  ? null
+                  : Text(
+                      letter,
+                      style: const TextStyle(
+                        color: AetherColors.night,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 19,
+                      ),
+                    ),
+            ),
+            Positioned(
+              right: -2,
+              bottom: -2,
+              child: Container(
+                width: 20,
+                height: 20,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AetherColors.electric,
+                  border: Border.all(color: AetherColors.night, width: 2),
+                ),
+                child: const Icon(
+                  Icons.photo_camera_rounded,
+                  size: 10,
+                  color: AetherColors.night,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

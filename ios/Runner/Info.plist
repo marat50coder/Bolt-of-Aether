@@ -75,7 +75,17 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Bolt of Aether can save exported bolts to your photo library.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Bolt of Aether can capture a photo when you attach an image to a bolt.</string>
+	<string>Bolt of Aether can capture a photo when you attach an image to a bolt or set your profile avatar.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Bolt of Aether uses this identifier to keep your daily bolts and streak in sync across your devices without asking you to sign in.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>io.flutter.embedded_views_preview</key>
 	<true/>
 </dict>
