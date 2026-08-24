@@ -647,4 +647,21 @@ class AppState extends ChangeNotifier {
     final now = DateTime.now();
     return '${months[now.month - 1]} ${now.day}, ${now.year}';
   }
+
+  /// Warm time-of-day greeting for the Today screen. Uses the user's
+  /// [nickname] when it has been personalised — the placeholder `'You'`
+  /// would read awkwardly ("Good morning, You"), so in that case we drop
+  /// the name and keep only the time-of-day salutation.
+  String get greeting {
+    final hour = DateTime.now().hour;
+    final part = hour < 5
+        ? 'Good night'
+        : hour < 12
+            ? 'Good morning'
+            : hour < 18
+                ? 'Good afternoon'
+                : 'Good evening';
+    if (_nickname.isEmpty || _nickname == 'You') return part;
+    return '$part, $_nickname';
+  }
 }

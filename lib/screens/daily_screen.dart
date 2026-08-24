@@ -71,6 +71,16 @@ class DailyScreen extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 6),
+        Text(
+          state.greeting,
+          style: TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.4,
+            color: AetherColors.electric.withValues(alpha: 0.92),
+          ),
+        ),
         const SizedBox(height: 4),
         ShaderText(
           'Today\'s bolt',
