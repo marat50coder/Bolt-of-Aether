@@ -102,14 +102,7 @@ class DailyScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            AetherTag(
-              label: state.visitStreak <= 1
-                  ? '${state.visitStreak} day'
-                  : '${state.visitStreak} days in a row',
-              icon: Icons.bolt_rounded,
-              color: AetherColors.electric,
-              dense: true,
-            ),
+            _AnimatedStreakChip(streak: state.visitStreak),
           ],
         ),
         const SizedBox(height: 18),
@@ -530,6 +523,94 @@ class _EveningBanner extends StatelessWidget {
             ),
           ),
           const Icon(Icons.chevron_right_rounded, color: AetherColors.moonGlow),
+        ],
+      ),
+    );
+  }
+}
+
+/// Streak chip whose number slides upward (odometer-style) whenever the
+/// value increases. Uses [AnimatedSwitcher] with a paired slide transition:
+/// the incoming digit enters from below, the outgoing one exits above.
+class _AnimatedStreakChip extends StatefulWidget {
+  const _AnimatedStreakChip({required this.streak});
+
+  final int streak;
+
+  @override
+  State<_AnimatedStreakChip> createState() => _AnimatedStreakChipState();
+}
+
+class _AnimatedStreakChipState extends State<_AnimatedStreakChip> {
+  @override
+  Widget build(BuildContext context) {
+    final streak = widget.streak;
+    final suffix = streak <= 1 ? ' day' : ' days in a row';
+    const color = AetherColors.electric;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.bolt_rounded, size: 12, color: color),
+          const SizedBox(width: 5),
+          // Only the number animates; the suffix swaps instantly so the
+          // chip width stays stable during the transition.
+          ClipRect(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 420),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                // New value enters from below; old exits upward.
+                final entering = (child.key as ValueKey<int>).value == streak;
+                final offset = entering
+                    ? Tween<Offset>(
+                        begin: const Offset(0, 1),
+                        end: Offset.zero,
+                      ).animate(animation)
+                    : Tween<Offset>(
+                        begin: const Offset(0, -1),
+                        end: Offset.zero,
+                      ).animate(animation);
+                return SlideTransition(
+                  position: offset,
+                  child: FadeTransition(opacity: animation, child: child),
+                );
+              },
+              child: Text(
+                '$streak',
+                key: ValueKey<int>(streak),
+                style: const TextStyle(
+                  color: color,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+          ),
+          // Suffix also uses AnimatedSwitcher so "day"→"days in a row"
+          // fades cleanly when the streak crosses 1.
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: Text(
+              suffix,
+              key: ValueKey<String>(suffix),
+              style: const TextStyle(
+                color: color,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ),
         ],
       ),
     );
