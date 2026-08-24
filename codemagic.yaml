@@ -1,0 +1,87 @@
+workflows:
+  ios-release:
+    name: iOS Release → App Store
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    integrations:
+      # NB: this string must match the App Store Connect integration name in
+      # Codemagic → Teams → Integrations. If it differs, replace with the
+      # exact name from the UI (e.g. "Bolt of Aether Codemagic").
+      app_store_connect: Bolt of Aether Codemagic
+
+    environment:
+      groups:
+        - code-signing
+      flutter: 3.41.7
+      xcode: latest
+      cocoapods: default
+      vars:
+        BUNDLE_ID: com.boltaether.boltaethergame
+        NSE_BUNDLE_ID: com.boltaether.boltaethergame.NotificationService
+        APP_STORE_APPLE_ID: "6797957269"
+        # Belt-and-braces disable of Swift Package Manager. Flutter 3.24+
+        # honours this env var even when `flutter config` state was not
+        # persisted on the CI VM. Without it, `flutter build ipa` adds the
+        # firebase-ios-sdk SPM package on top of the Firebase CocoaPod and
+        # the two collide with "Redefinition of module 'Firebase'".
+        FLUTTER_ENABLE_SWIFT_PACKAGE_MANAGER: "false"
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: ios-gray-part
+          include: true
+
+    scripts:
+      # Firebase ships as a CocoaPod for us (the NSE target needs
+      # Firebase/Messaging via Pods). Flutter 3.24+ enables Swift Package
+      # Manager globally by default, which then auto-adds firebase-ios-sdk
+      # as an SPM package on top of the pod — the two modules collide and
+      # the build fails with "Redefinition of module 'Firebase'". Disable
+      # SPM for this CI machine before any Flutter iOS invocation.
+      - name: Disable Swift Package Manager (CocoaPods-only project)
+        script: flutter config --no-enable-swift-package-manager
+
+      - name: Install Flutter dependencies
+        script: flutter pub get
+
+      - name: Install CocoaPods
+        script: pod install
+        working_directory: ios
+
+      - name: Code signing & Build IPA
+        script: |
+          keychain initialize
+          # Create a distribution certificate (using CERTIFICATE_PRIVATE_KEY)
+          # if none exists, then the App Store provisioning profile.
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --platform IOS \
+            --create
+          app-store-connect fetch-signing-files "$NSE_BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --platform IOS \
+            --create
+          keychain add-certificates
+          # Two-step build: compile Dart unsigned first (this can rewrite
+          # the Xcode project), then apply provisioning profiles and pack
+          # the IPA. Bypasses `flutter build ipa` which auto-injects the
+          # SPM integration step even after `--no-enable-swift-package-manager`
+          # in some Flutter 3.4x combinations.
+          flutter build ios --release --no-codesign
+          xcode-project use-profiles
+          xcode-project build-ipa \
+            --workspace "ios/Runner.xcworkspace" \
+            --scheme "Runner"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false
+        submit_to_app_store: false

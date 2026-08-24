@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>boltaethergame</string>
+	<string>Bolt of Aether</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -72,16 +72,19 @@
 	<string>Bolt of Aether records short voice bolts so you can capture spoken reflections and rituals.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Bolt of Aether lets you attach photos from your library to bolts and rituals.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Bolt of Aether can save exported bolts to your photo library.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Bolt of Aether can capture a photo when you attach an image to a bolt or set your profile avatar.</string>
+	<string>Bolt of Aether can capture a photo when you attach an image to a bolt.</string>
 	<key>NSUserTrackingUsageDescription</key>
 	<string>Bolt of Aether uses this identifier to keep your daily bolts and streak in sync across your devices without asking you to sign in.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+	</dict>
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>

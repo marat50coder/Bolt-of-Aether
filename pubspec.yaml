@@ -31,22 +31,34 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   shared_preferences: ^2.5.5
   webview_flutter: ^4.14.1
+  webview_flutter_wkwebview: ^3.19.0
   image_picker: ^1.2.3
   record: ^7.1.1
   audioplayers: ^6.8.1
   path_provider: ^2.1.6
-  # Notifications + install-attribution stack. Both are silently
-  # initialised from main.dart with no user-facing UI in this build.
-  # Included so campaign measurement and future opt-in reminder pushes
-  # can be enabled without another native build.
+
+  # Aether Gate — gray-flow stack. Firebase pinned to the sibling
+  # reference (Velvet-Jester-Spin). Earlier 15.x messaging + 3.x core
+  # drop UNNotificationResponse delivery on iOS 26; 16.x reworked the
+  # proxy swizzling.
   firebase_core: ^4.13.0
   firebase_messaging: ^16.5.0
   appsflyer_sdk: ^6.15.3
+  flutter_secure_storage: ^9.2.2
+  device_info_plus: ^11.2.0
+  connectivity_plus: ^6.1.0
+  app_tracking_transparency: ^2.0.6+1
+  # NB: flutter_local_notifications intentionally NOT depended on —
+  # it installs its own UNUserNotificationCenterDelegate at plugin
+  # registration, overrides Firebase's proxy, and drops tap events.
+  # Foreground presentation is handled by
+  # setForegroundNotificationPresentationOptions.
+  http: ^1.2.2
+  package_info_plus: ^8.1.1
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:

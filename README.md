@@ -1,17 +1,24 @@
-# boltaethergame
+# Bolt of Aether
 
-A new Flutter project.
+Bolt of Aether is a daily inspiration companion. Capture a spark of thought
+each day, build calming morning and evening rituals, and keep a personal
+collection of the bolts that resonate with you.
 
-## Getting Started
+## Features
 
-This project is a starting point for a Flutter application.
+- **Daily bolt** — a fresh spark of inspiration every day.
+- **Morning charge / evening discharge** — short guided rituals to open and
+  close your day.
+- **Create** — write, attach a photo, or record a short voice note to keep a
+  reflection.
+- **Rituals & discover** — browse ready-made rituals and community bolts.
+- **Saved** — revisit the bolts you starred, offline.
 
-A few resources to get you started if this is your first Flutter project:
+## Getting started
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```bash
+flutter pub get
+flutter run
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+The app targets iOS and stores your bolts locally on the device.
