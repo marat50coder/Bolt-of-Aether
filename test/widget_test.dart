@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:boltaethergame/core/models.dart';
-import 'package:boltaethergame/screens/splash_screen.dart';
+import 'package:bolt_of_aether/core/models.dart';
+import 'package:bolt_of_aether/screens/splash_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -8,42 +8,42 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
-import '../config/relay_config.dart';
-import '../transport/agate_log.dart';
-import '../transport/bolt_agent.dart';
-import '../transport/bolt_pulse.dart';
-import '../transport/relay_vault.dart';
-import '../transport/signal_probe.dart';
-import 'silence_screen.dart';
+import '../config/link_config.dart';
+import '../transport/link_agent.dart';
+import '../transport/link_ledger.dart';
+import '../transport/net_probe.dart';
+import '../transport/nova_log.dart';
+import '../transport/push_bridge.dart';
+import 'hush_screen.dart';
 
-/// WebView shell. Structure mirrors the proven reference (EggRunnerAdventure
-/// `RoostPortal`, Crystal-Pinfall `PortalView`) so the runtime behaviour on
-/// the partner harness is identical. Diversification vs siblings is kept in:
-///   • the merged single-sentinel JS bundle (moderation §7b — no six-callsite
-///     injection pattern),
-///   • rotated numeric constants from `AetherRelayConfig` (§7a),
-///   • encoded UA fragments from `BoltAgent` (§4).
-class StormChannel extends StatefulWidget {
-  const StormChannel({
+/// WebView shell. Diversification vs anything else in the ecosystem
+/// lives in three places:
+///
+///   • the merged single-sentinel JS bundle injected once per page (no
+///     six-callsite injection pattern),
+///   • the rotated numeric constants pulled from [LinkConfig],
+///   • the encoded User-Agent fragments assembled by [LinkAgent].
+class NovaPortal extends StatefulWidget {
+  const NovaPortal({
     super.key,
     required this.destination,
-    required this.pulse,
-    required this.vault,
+    required this.push,
+    required this.ledger,
     required this.agent,
     this.coldStartPush = false,
   });
 
   final String destination;
-  final BoltPulse pulse;
-  final RelayVault vault;
-  final BoltAgent agent;
+  final PushBridge push;
+  final LinkLedger ledger;
+  final LinkAgent agent;
   final bool coldStartPush;
 
   @override
-  State<StormChannel> createState() => _StormChannelState();
+  State<NovaPortal> createState() => _NovaPortalState();
 }
 
-class _StormChannelState extends State<StormChannel>
+class _NovaPortalState extends State<NovaPortal>
     with WidgetsBindingObserver {
   late final WebViewController _web;
   final _connectivity = Connectivity();
@@ -72,11 +72,11 @@ class _StormChannelState extends State<StormChannel>
     _bindConnectivity();
 
     // Controller setup is SYNCHRONOUS (cascade) so `_viewportReady = true`
-    // can flip in this same initState frame — matches sibling PasturePortal
-    // / BeamPortal exactly. The earlier awaited setup added ~200-500 ms of
-    // black flash between AetherWarmup and the WebView first paint. All
-    // `..setX(...)` calls fire-and-forget on the platform side; they are
-    // ready by the time WKWebView actually processes `loadRequest`.
+    // can flip in the same initState frame. An earlier awaited setup added
+    // ~200-500 ms of black flash between the warmup and the WebView's
+    // first paint. All `..setX(...)` calls fire-and-forget on the
+    // platform side; they are ready by the time WKWebView actually
+    // processes `loadRequest`.
     final params = (Platform.isIOS || Platform.isMacOS)
         ? WebKitWebViewControllerCreationParams(
             allowsInlineMediaPlayback: true,
@@ -97,13 +97,13 @@ class _StormChannelState extends State<StormChannel>
           .setAllowsBackForwardNavigationGestures(true);
     }
 
-    // Live push taps (`onMessageOpenedApp` background/foreground-tap) route
-    // through BoltPulse → this callback, which loads the URL into the
-    // current WebView. Registered before the first frame so a push that
-    // dispatches concurrently is never lost. Single callback (not a list)
-    // matches the reference sibling — a remounted StormChannel simply
-    // replaces the previous receiver.
-    widget.pulse.onDestination = _onPushLink;
+    // Live push taps (`onMessageOpenedApp` background/foreground-tap)
+    // route through PushBridge → this callback, which loads the URL
+    // into the current WebView. Registered before the first frame so a
+    // push that dispatches concurrently is never lost. Single callback
+    // (not a list) — a remounted NovaPortal simply replaces the
+    // previous receiver.
+    widget.push.onDestination = _onPushLink;
 
     if (widget.coldStartPush) {
       _settleColdViewport();
@@ -111,8 +111,8 @@ class _StormChannelState extends State<StormChannel>
       _viewportReady = true;
       _web.loadRequest(Uri.parse(widget.destination));
     }
-    // First-frame drain of any URL BoltPulse persisted before the WebView
-    // was mounted (splash / permit / native path in between).
+    // First-frame drain of any URL PushBridge persisted before the
+    // WebView was mounted (splash / consent / native path in between).
     WidgetsBinding.instance.addPostFrameCallback((_) => _consumePendingPush());
   }
 
@@ -120,21 +120,22 @@ class _StormChannelState extends State<StormChannel>
     if (!mounted) return;
     final uri = Uri.tryParse(url);
     if (uri == null || !uri.hasScheme) return;
-    agateLog(() => '[AGATE.wv] push → load $url');
-    // Clear the persisted copy — this listener has claimed the URL, so a
-    // subsequent `_consumePendingPush` on resume must not fire it again.
-    unawaited(widget.vault.consumePushUrl());
+    novaLog(() => '[NOVA.wv] push → load $url');
+    // Clear the persisted copy — this listener has claimed the URL, so
+    // a subsequent [_consumePendingPush] on resume must not fire it
+    // again.
+    unawaited(widget.ledger.consumePushUrl());
     _web.loadRequest(uri);
   }
 
   Future<void> _consumePendingPush() async {
     try {
-      final pending = await widget.vault.consumePushUrl();
+      final pending = await widget.ledger.consumePushUrl();
       if (pending == null || pending.isEmpty) return;
       final uri = Uri.tryParse(pending);
       if (uri == null || !uri.hasScheme) return;
       if (!mounted) return;
-      agateLog(() => '[AGATE.wv] drained pending push → $pending');
+      novaLog(() => '[NOVA.wv] drained pending push → $pending');
       _web.loadRequest(uri);
     } catch (_) {}
   }
@@ -154,9 +155,9 @@ class _StormChannelState extends State<StormChannel>
       onNavigationRequest: (request) {
         final uri = Uri.tryParse(request.url);
         if (uri == null) return NavigationDecision.prevent;
-        // Scheme gate only — never a host allowlist
-        // (`apple_moderation_hardening.mdc §6`: config may swap the partner
-        // host after release; an allowlist would silently drop the new URL).
+        // Scheme gate only — never a host allowlist. Configuration may
+        // swap the partner host after release; an allowlist would
+        // silently drop the new URL.
         if (<String>{'http', 'https', 'about', 'data', 'blob'}
             .contains(uri.scheme.toLowerCase())) {
           if (request.isMainFrame) _lastMainFrame = request.url;
@@ -165,8 +166,8 @@ class _StormChannelState extends State<StormChannel>
         if (uri.scheme.toLowerCase() == 'javascript') {
           return NavigationDecision.prevent;
         }
-        // Everything else (tel, mailto, sms, app schemes) → hand off to iOS
-        // without stalling the WebView.
+        // Everything else (tel, mailto, sms, app schemes) → hand off to
+        // iOS without stalling the WebView.
         launchUrl(uri, mode: LaunchMode.externalApplication).catchError((_) => false);
         return NavigationDecision.prevent;
       },
@@ -176,22 +177,22 @@ class _StormChannelState extends State<StormChannel>
   void _handleError(WebResourceError error) {
     // -999 = cancelled (a new nav superseded this one) — ignore.
     if (error.errorCode == -999) return;
-    // WKWebView occasionally reports `isForMainFrame` as null for the actual
-    // main navigation. Treat null as main so a real failure is never silently
-    // swallowed (which used to leave the app "frozen").
+    // WKWebView occasionally reports `isForMainFrame` as null for the
+    // actual main navigation. Treat null as main so a real failure is
+    // never silently swallowed (which used to leave the app "frozen").
     final mainFrame = error.isForMainFrame ?? true;
     final lower = error.description.toLowerCase();
     final redirectLoop = error.errorCode == -1007 ||
         lower.contains('too_many_redirects') ||
         lower.contains('too many redirects');
-    // Redirect-loop recovery: re-issue the last main-frame URL as a fresh
-    // navigation (resets WKWebView's internal redirect counter). Bounded by
-    // the project-rotated limit (§7a).
+    // Redirect-loop recovery: re-issue the last main-frame URL as a
+    // fresh navigation (resets WKWebView's internal redirect counter).
+    // Bounded by the project-rotated limit.
     if (redirectLoop &&
         _lastMainFrame != null &&
-        _redirectAttempts < AetherRelayConfig.redirectRetryLimit) {
+        _redirectAttempts < LinkConfig.redirectRetryLimit) {
       _redirectAttempts += 1;
-      agateLog(() => '[AGATE.wv] redirect retry $_redirectAttempts');
+      novaLog(() => '[NOVA.wv] redirect retry $_redirectAttempts');
       _web.loadRequest(Uri.parse(_lastMainFrame!));
       return;
     }
@@ -201,19 +202,14 @@ class _StormChannelState extends State<StormChannel>
 
   /// Transient-vs-real outage arbiter for main-frame load failures.
   ///
-  /// Right after a wifi hand-off (auto-retry from SilenceScreen ↑↑↑) the
-  /// OS reports the interface UP well before DHCP + DNS + default route
-  /// are actually usable. WKWebView then reports -1004 / -1005 / -1009 on
-  /// the very first `loadRequest` — but the connection is genuinely fine
-  /// a second later. The previous code called `dnsProbe` once and, if it
-  /// failed on the same stale resolver, bounced the user straight to
-  /// SilenceScreen. The result the user saw: "loading finishes, then no
-  /// wifi again even though I have internet".
-  ///
-  /// This variant retries the LOAD (not just the probe) with backoff.
-  /// The DNS probe now only decides whether to keep waiting for the next
-  /// reload attempt or to give up immediately — it never single-handedly
-  /// forces the offline screen.
+  /// Right after a wifi hand-off (auto-retry from the offline screen)
+  /// the OS reports the interface UP well before DHCP + DNS + default
+  /// route are actually usable. WKWebView then reports -1004 / -1005 /
+  /// -1009 on the very first `loadRequest` — but the connection is
+  /// genuinely fine a second later. This method retries the LOAD (not
+  /// just the DNS probe) with backoff; the DNS probe only decides
+  /// whether to keep waiting for the next reload attempt or to give
+  /// up immediately.
   Future<void> _handleMainFrameFailure(WebResourceError error) async {
     if (_offlineShown) return;
     const transientCodes = <int>{
@@ -226,27 +222,29 @@ class _StormChannelState extends State<StormChannel>
     };
     final transient = transientCodes.contains(error.errorCode);
 
-    // Full connectivity blackout? Go straight to SilenceScreen — no point
-    // reloading a URL when the radio itself is off.
-    final hasRadio = await SignalProbe(_connectivity).hasRadio();
+    // Full connectivity blackout? Go straight to the offline screen —
+    // no point reloading a URL when the radio itself is off.
+    final hasRadio = await NetProbe(_connectivity).hasRadio();
     if (!hasRadio) {
-      agateLog(() =>
-          '[AGATE.wv] mainframe error ${error.errorCode} — no radio → offline');
+      novaLog(() =>
+          '[NOVA.wv] mainframe error ${error.errorCode} — no radio → offline');
       _goOffline();
       return;
     }
 
     // Non-transient error while radio is up (bad URL, TLS pin mismatch,
-    // 4xx / 5xx from the origin, etc.) — retrying would just loop. Probe
-    // once so a real outage still surfaces, otherwise stay on the shell.
+    // 4xx / 5xx from the origin, etc.) — retrying would just loop.
+    // Probe once so a real outage still surfaces, otherwise stay on
+    // the shell.
     if (!transient) {
-      final online = await SignalProbe(_connectivity).dnsProbe();
+      final online = await NetProbe(_connectivity).dnsProbe();
       if (!online) _goOffline();
       return;
     }
 
-    // Transient error path: retry the load with backoff. Only after every
-    // retry has failed do we consider the outage real and probe DNS.
+    // Transient error path: retry the load with backoff. Only after
+    // every retry has failed do we consider the outage real and probe
+    // DNS.
     const maxAttempts = 4;
     const backoffs = <Duration>[
       Duration(milliseconds: 800),
@@ -255,39 +253,37 @@ class _StormChannelState extends State<StormChannel>
       Duration(milliseconds: 3200),
     ];
     if (_transientReloadAttempts >= maxAttempts) {
-      final online = await SignalProbe(_connectivity).dnsProbe();
+      final online = await NetProbe(_connectivity).dnsProbe();
       if (!online) {
-        agateLog(() =>
-            '[AGATE.wv] transient exhausted, dns dead → offline');
+        novaLog(() => '[NOVA.wv] transient exhausted, dns dead → offline');
         _goOffline();
       } else {
-        agateLog(() =>
-            '[AGATE.wv] transient exhausted but dns ok — staying on shell');
+        novaLog(() => '[NOVA.wv] transient exhausted but dns ok — staying on shell');
         _transientReloadAttempts = 0;
       }
       return;
     }
     final wait = backoffs[_transientReloadAttempts];
     _transientReloadAttempts += 1;
-    agateLog(() =>
-        '[AGATE.wv] transient ${error.errorCode}, reload attempt $_transientReloadAttempts/$maxAttempts in ${wait.inMilliseconds}ms');
+    novaLog(() =>
+        '[NOVA.wv] transient ${error.errorCode}, reload attempt $_transientReloadAttempts/$maxAttempts in ${wait.inMilliseconds}ms');
     await Future<void>.delayed(wait);
     if (!mounted || _offlineShown) return;
     final target = _lastMainFrame ?? widget.destination;
     try {
       await _web.loadRequest(Uri.parse(target));
     } catch (e) {
-      agateLog(() => '[AGATE.wv] reload threw: $e');
+      novaLog(() => '[NOVA.wv] reload threw: $e');
     }
   }
 
   Future<void> _goOffline() async {
     if (_offlineShown || !mounted) return;
     _offlineShown = true;
-    // Capture the ACTUAL page the user was on so the retry reloads that
-    // page (deep inside the partner flow), not the initial config-endpoint
-    // destination. Fallbacks: last main-frame URL we saw, then
-    // widget.destination as a final safety net.
+    // Capture the ACTUAL page the user was on so the retry reloads
+    // that page (deep inside the partner flow), not the initial
+    // config-endpoint destination. Fallbacks: last main-frame URL we
+    // saw, then widget.destination as a final safety net.
     String resumeUrl = widget.destination;
     try {
       resumeUrl = await _web.currentUrl() ??
@@ -300,11 +296,11 @@ class _StormChannelState extends State<StormChannel>
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 320),
-        pageBuilder: (_, _, _) => SilenceScreen(
-          retryBuilder: (_) => StormChannel(
+        pageBuilder: (_, _, _) => HushScreen(
+          retryBuilder: (_) => NovaPortal(
             destination: resumeUrl,
-            pulse: widget.pulse,
-            vault: widget.vault,
+            push: widget.push,
+            ledger: widget.ledger,
             agent: widget.agent,
             coldStartPush: false,
           ),
@@ -317,10 +313,10 @@ class _StormChannelState extends State<StormChannel>
 
   Future<void> _settleColdViewport() async {
     _applyImmersive();
-    // Let immersive settle in the phone's ACTUAL orientation before mounting;
-    // no landscape nudge — that caused a visible sideways flip
-    // (`cold_start_push_viewport.mdc` Layer 2). Non-round settle per §7a.
-    await Future<void>.delayed(AetherRelayConfig.coldViewportSettle);
+    // Let immersive settle in the phone's ACTUAL orientation before
+    // mounting; no landscape nudge — that caused a visible sideways
+    // flip. Non-round settle duration on purpose.
+    await Future<void>.delayed(LinkConfig.coldViewportSettle);
     if (!mounted) return;
     setState(() => _viewportReady = true);
     await _web.loadRequest(Uri.parse(widget.destination));
@@ -341,9 +337,9 @@ class _StormChannelState extends State<StormChannel>
   void _bindConnectivity() {
     _connSub = _connectivity.onConnectivityChanged.listen((flat) {
       final online = flat.any((r) => r != ConnectivityResult.none);
-      // Connectivity definitively gone → offline immediately, no probe (a
-      // probe hangs for seconds while offline and lets WKWebView render its
-      // built-in error page first).
+      // Connectivity definitively gone → offline immediately, no probe
+      // (a probe hangs for seconds while offline and lets WKWebView
+      // render its built-in error page first).
       if (!online) _goOffline();
     });
   }
@@ -352,8 +348,9 @@ class _StormChannelState extends State<StormChannel>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _applyImmersive();
-      // A push tap can bring us back from background AFTER BoltPulse had a
-      // brief moment to fire; drain the vault in case the listener race lost.
+      // A push tap can bring us back from background AFTER PushBridge
+      // had a brief moment to fire; drain the ledger in case the
+      // listener race lost.
       _consumePendingPush();
     }
   }
@@ -363,10 +360,10 @@ class _StormChannelState extends State<StormChannel>
     if (!mounted) return;
     setState(() {});
     // Only re-poke on genuine rotation (portrait ↔ landscape). WKWebView
-    // keeps the pre-rotation viewport width for a few hundred ms, so the
-    // site renders at the wrong width right after the flip. Firing resize
-    // several times as the native frame settles lets the page reflow to the
-    // new width fast instead of a visible ~1 s stretch.
+    // keeps the pre-rotation viewport width for a few hundred ms, so
+    // the site renders at the wrong width right after the flip. Firing
+    // resize several times as the native frame settles lets the page
+    // reflow to the new width fast, instead of a visible ~1 s stretch.
     final view = View.of(context);
     final size = view.physicalSize;
     final rotated = _lastMetricsSize != null &&
@@ -380,7 +377,7 @@ class _StormChannelState extends State<StormChannel>
   }
 
   void _pokeReflow() {
-    for (final delay in AetherRelayConfig.pokeReflowDelays) {
+    for (final delay in LinkConfig.pokeReflowDelays) {
       Timer(delay, () async {
         if (!mounted) return;
         try {
@@ -402,7 +399,7 @@ class _StormChannelState extends State<StormChannel>
   }
 
   void _scheduleResizeSettle() {
-    Future<void>.delayed(AetherRelayConfig.postLoadResizeDelay, () async {
+    Future<void>.delayed(LinkConfig.postLoadResizeDelay, () async {
       if (!mounted) return;
       setState(() {}); // re-read viewPadding
       try {
@@ -421,14 +418,14 @@ class _StormChannelState extends State<StormChannel>
     });
   }
 
-  /// One merged, single-sentinel native-feel bundle. Responsibilities: zero
-  /// the site's safe-area CSS variables, kill overscroll + tap-highlight,
-  /// lock the viewport (zoom off), keep a focused field visible above the
-  /// keyboard, tint the scrollbar, prime inline video autoplay. Idempotent
-  /// (`window.__aeSpark`). Does NOT touch link behaviour — a scripted top
-  /// navigation dropped Referer/Sec-Fetch and made partner servers bounce
-  /// into a -1007 loop, and siblings prove the native click/`location.href`
-  /// path is enough.
+  /// One merged, single-sentinel native-feel bundle. Responsibilities:
+  /// zero the site's safe-area CSS variables, kill overscroll +
+  /// tap-highlight, lock the viewport (zoom off), keep a focused field
+  /// visible above the keyboard, tint the scrollbar, prime inline
+  /// video autoplay. Idempotent (`window.__novaSkin`). Does NOT touch
+  /// link behaviour — a scripted top navigation dropped Referer /
+  /// Sec-Fetch and made partner servers bounce into a -1007 loop, and
+  /// the native click / `location.href` path is enough.
   Future<void> _primeShell() async {
     try {
       await _web.runJavaScript(r'''
@@ -442,7 +439,7 @@ class _StormChannelState extends State<StormChannel>
     return !!visual && visual.height < root.innerHeight * 0.72;
   }
 
-  var brandId = '__ae_skin';
+  var brandId = '__nova_skin';
   var sheetText = [
     ':root{--safe-area-inset-top:0px!important;--safe-area-inset-right:0px!important;--safe-area-inset-bottom:0px!important;--safe-area-inset-left:0px!important;--sat:0px!important;--sar:0px!important;--sab:0px!important;--sal:0px!important;--safe-top:0px!important;--safe-bottom:0px!important;--safe-left:0px!important;--safe-right:0px!important;}',
     '.gameview-mobile-header,.app-header,.js-safe-top{padding-top:0!important;margin-top:0!important;}',
@@ -473,8 +470,8 @@ class _StormChannelState extends State<StormChannel>
     if (skin.textContent !== sheetText) skin.textContent = sheetText;
   }
 
-  if (root.__aeSpark){ paint(); return; }
-  root.__aeSpark = 1;
+  if (root.__novaSkin){ paint(); return; }
+  root.__novaSkin = 1;
 
   function swallow(ev){ try { ev.preventDefault(); } catch(_){} }
   var gestureTypes = ['gesturestart','gesturechange','gestureend'];
@@ -551,14 +548,14 @@ class _StormChannelState extends State<StormChannel>
 })();
 ''');
     } catch (e) {
-      agateLog(() => '[AGATE.wv] inject failed: $e');
+      novaLog(() => '[NOVA.wv] inject failed: $e');
     }
   }
 
   @override
   void dispose() {
-    if (widget.pulse.onDestination == _onPushLink) {
-      widget.pulse.onDestination = null;
+    if (widget.push.onDestination == _onPushLink) {
+      widget.push.onDestination = null;
     }
     _connSub?.cancel();
     _metricsDebounce?.cancel();
@@ -574,9 +571,8 @@ class _StormChannelState extends State<StormChannel>
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        // Back inside the WebView. If we're on the first page, do NOTHING —
-        // never close the shell (`gray_flow_lessons.md` behaviour +
-        // START_HERE §5.6).
+        // Back inside the WebView. If we're on the first page, do
+        // NOTHING — never close the shell.
         try {
           if (await _web.canGoBack()) await _web.goBack();
         } catch (_) {}
@@ -586,10 +582,11 @@ class _StormChannelState extends State<StormChannel>
         resizeToAvoidBottomInset: false,
         body: _viewportReady
             ? Padding(
-                // Respect notch/Dynamic Island (top + sides) AND the home
-                // indicator (bottom) in BOTH orientations. Cold-start uses
-                // viewPadding (never EdgeInsets.zero) so the bottom inset is
-                // not lost while immersive mode settles.
+                // Respect notch/Dynamic Island (top + sides) AND the
+                // home indicator (bottom) in BOTH orientations. Cold
+                // start uses viewPadding (never EdgeInsets.zero) so
+                // the bottom inset is not lost while immersive mode
+                // settles.
                 padding: EdgeInsets.only(
                   top: safe.top,
                   bottom: safe.bottom,

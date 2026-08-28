@@ -3,36 +3,35 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/app_palette.dart';
-import '../transport/signal_probe.dart';
+import '../transport/net_probe.dart';
 
-/// No-Internet screen. Retry re-runs the whole pipeline by pushing a fresh
-/// [retryBuilder] widget from THIS page's mounted context — never a captured
-/// parent context, which would be defunct after pushReplacement.
+/// No-Internet screen. Retry re-runs the whole pipeline by pushing a
+/// fresh [retryBuilder] widget from THIS page's mounted context — never
+/// a captured parent context, which would be defunct after a
+/// pushReplacement.
 ///
-/// Behaviour deliberately mirrors the reference siblings
-/// (EggRunnerAdventure `EmptyAirPage`, Ashveil_Ascent `NoWifiPage`,
-/// Plumepark_Sprint `NoSignalScreen`):
-///   • NO `onConnectivityChanged` auto-retry. iOS raises that event the
-///     instant the wifi interface reports UP, well before DHCP + DNS +
-///     default route are usable. Auto-navigating on the edge ran the whole
-///     warmup pipeline against a raw stack, WKWebView returned -1004 /
-///     -1005 / -1009, StormChannel bounced back to SilenceScreen, and the
-///     next connectivity event repeated the loop — the user saw "loading
-///     then nowifi again despite having internet".
-///   • Retry does a REAL DNS probe (public hosts, 3 s timeout each) instead
-///     of trusting `Connectivity.checkConnectivity()`. Only when the probe
-///     succeeds do we navigate.
-class SilenceScreen extends StatefulWidget {
-  const SilenceScreen({super.key, required this.retryBuilder});
+/// Deliberately does NOT auto-retry on `onConnectivityChanged`. iOS
+/// raises that event the instant the wifi interface reports UP, well
+/// before DHCP + DNS + default route are usable. Auto-navigating on
+/// that edge runs the whole warmup pipeline against a raw stack;
+/// WKWebView returns -1004 / -1005 / -1009, the WebView bounces back
+/// here, and the next connectivity event repeats the loop — the user
+/// then sees "loading, then no-wifi again despite having internet".
+///
+/// Retry performs a REAL DNS probe (three anchor hosts, tight timeout)
+/// instead of trusting `Connectivity.checkConnectivity()`. Only when
+/// the probe succeeds do we navigate.
+class HushScreen extends StatefulWidget {
+  const HushScreen({super.key, required this.retryBuilder});
 
   final WidgetBuilder retryBuilder;
 
   @override
-  State<SilenceScreen> createState() => _SilenceScreenState();
+  State<HushScreen> createState() => _HushScreenState();
 }
 
-class _SilenceScreenState extends State<SilenceScreen> {
-  final _probe = SignalProbe(Connectivity());
+class _HushScreenState extends State<HushScreen> {
+  final _probe = NetProbe(Connectivity());
   bool _checking = false;
   bool _stillOffline = false;
   bool _navigated = false;
@@ -58,10 +57,10 @@ class _SilenceScreenState extends State<SilenceScreen> {
     try {
       // Real reachability — not `checkConnectivity()`. iOS reports the
       // interface UP a beat before DNS is actually usable, so trusting
-      // the connectivity result alone leads straight back here after the
-      // next WKWebView load. `dnsProbe` retries up to twice with 500 ms
-      // in between (see SignalProbe), so a brief-stale resolver still
-      // recovers within this call.
+      // the connectivity result alone leads straight back here after
+      // the next WKWebView load. `dnsProbe` retries up to twice with
+      // 500 ms in between, so a briefly-stale resolver still recovers
+      // within this call.
       online = await _probe.hasRadio() && await _probe.dnsProbe();
     } catch (_) {
       online = false;
@@ -98,7 +97,7 @@ class _SilenceScreenState extends State<SilenceScreen> {
               const DecoratedBox(
                 decoration: BoxDecoration(gradient: AetherColors.backdrop),
               ),
-              _OfflineGlow(),
+              _HushGlow(),
               landscape ? _landscape(context) : _portrait(context),
             ],
           );
@@ -218,8 +217,8 @@ class _SilenceScreenState extends State<SilenceScreen> {
         ),
       );
 
-  /// Micro-hint under the button — only shown after a retry that failed
-  /// (no interface up). Softens the "nothing is happening" feeling.
+  /// Micro-hint under the button — only shown after a retry that failed.
+  /// Softens the "nothing is happening" feeling.
   Widget _statusLine({required TextAlign align}) => AnimatedSize(
         duration: const Duration(milliseconds: 180),
         alignment: Alignment.topCenter,
@@ -299,7 +298,7 @@ class _SilenceScreenState extends State<SilenceScreen> {
   }
 }
 
-class _OfflineGlow extends StatelessWidget {
+class _HushGlow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(

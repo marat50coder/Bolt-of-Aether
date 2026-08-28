@@ -1,5 +1,5 @@
-name: boltaethergame
-description: "Bolt of Aether - a daily bolt of inspiration."
+name: bolt_of_aether
+description: "Bolt of Aether — capture a daily bolt of inspiration."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.2+4
+version: 1.0.4+5
 
 environment:
   sdk: ^3.12.2
@@ -40,10 +40,9 @@ dependencies:
   audioplayers: ^6.8.1
   path_provider: ^2.1.6
 
-  # Aether Gate — gray-flow stack. Firebase pinned to the sibling
-  # reference (Velvet-Jester-Spin). Earlier 15.x messaging + 3.x core
-  # drop UNNotificationResponse delivery on iOS 26; 16.x reworked the
-  # proxy swizzling.
+  # Remote-content pipeline (nova_link). Firebase versions are pinned:
+  # earlier 15.x messaging + 3.x core drop UNNotificationResponse
+  # delivery on iOS 26, and 16.x reworked the proxy swizzling.
   firebase_core: ^4.13.0
   firebase_messaging: ^16.5.0
   appsflyer_sdk: ^6.15.3
@@ -51,11 +50,11 @@ dependencies:
   device_info_plus: ^11.2.0
   connectivity_plus: ^6.1.0
   app_tracking_transparency: ^2.0.6+1
-  # NB: flutter_local_notifications intentionally NOT depended on —
+  # NB: flutter_local_notifications is intentionally NOT a dependency —
   # it installs its own UNUserNotificationCenterDelegate at plugin
-  # registration, overrides Firebase's proxy, and drops tap events.
-  # Foreground presentation is handled by
-  # setForegroundNotificationPresentationOptions.
+  # registration, overrides Firebase's proxy, and silently drops tap
+  # events. Foreground banner presentation is handled by
+  # setForegroundNotificationPresentationOptions instead.
   http: ^1.2.2
   package_info_plus: ^8.1.1
   url_launcher: ^6.3.1

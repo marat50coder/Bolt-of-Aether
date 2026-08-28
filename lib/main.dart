@@ -7,19 +7,19 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'aether_gate/config/relay_config.dart';
-import 'aether_gate/pages/aether_warmup.dart';
-import 'aether_gate/router/aether_router.dart';
-import 'aether_gate/transport/agate_log.dart';
-import 'aether_gate/transport/bolt_agent.dart';
-import 'aether_gate/transport/bolt_pulse.dart';
-import 'aether_gate/transport/channel_dispatch.dart';
-import 'aether_gate/transport/relay_vault.dart';
-import 'aether_gate/transport/signal_probe.dart';
-import 'aether_gate/transport/storm_attrib.dart';
 import 'core/app_palette.dart';
 import 'core/app_scope.dart';
 import 'core/app_state.dart';
+import 'nova_link/config/link_config.dart';
+import 'nova_link/pages/nova_warmup.dart';
+import 'nova_link/router/link_router.dart';
+import 'nova_link/transport/anchor_attrib.dart';
+import 'nova_link/transport/link_agent.dart';
+import 'nova_link/transport/link_courier.dart';
+import 'nova_link/transport/link_ledger.dart';
+import 'nova_link/transport/net_probe.dart';
+import 'nova_link/transport/nova_log.dart';
+import 'nova_link/transport/push_bridge.dart';
 
 void main() {
   runZonedGuarded(
@@ -28,10 +28,10 @@ void main() {
 
       FlutterError.onError = (details) {
         FlutterError.presentError(details);
-        agateLog(() => 'Caught framework error: ${details.exceptionAsString()}');
+        novaLog(() => 'Caught framework error: ${details.exceptionAsString()}');
       };
       PlatformDispatcher.instance.onError = (error, stack) {
-        agateLog(() => 'Caught platform error: $error');
+        novaLog(() => 'Caught platform error: $error');
         return true;
       };
       ErrorWidget.builder = (details) => const _SafeErrorView();
@@ -46,72 +46,72 @@ void main() {
         ),
       );
 
-      // Gray-flow services — every step guarded so a Firebase or plugin
-      // failure never disables the gate (`gray_flow_lessons.md` §5).
-      final vault = await RelayVault.open();
-      final probe = SignalProbe(Connectivity());
-      final agent = await BoltAgent.ready();
-      final dispatch = ChannelDispatch(agent);
+      // Remote-content services — every step guarded so a Firebase or
+      // plugin failure never disables the pipeline as a whole.
+      final ledger = await LinkLedger.open();
+      final probe = NetProbe(Connectivity());
+      final agent = await LinkAgent.ready();
+      final courier = LinkCourier(agent);
 
-      // Firebase MUST be configured before any FirebaseMessaging call and
-      // before iOS delivers a notification response. The sibling reference
-      // (Velvet-Jester-Spin main.dart) awaits this in main; running it
-      // lazily inside `pulse.init()` reproducibly loses tap-events on cold
-      // launch (the log `[FirebaseCore][I-COR000005] No app has been
-      // configured yet.` is the tell). Guarded so a Firebase failure never
-      // disables the gate — `pulse.enabled=false` will short-circuit push
-      // handling but leave the WebView / native branches intact.
+      // Firebase MUST be configured before any FirebaseMessaging call
+      // and before iOS delivers a notification response. Running it
+      // lazily inside `push.init()` reproducibly loses tap-events on
+      // cold launch (the log `[FirebaseCore][I-COR000005] No app has
+      // been configured yet.` is the tell). Guarded so a Firebase
+      // failure never disables the pipeline — `push.enabled = false`
+      // will short-circuit push handling but leave the WebView and
+      // native branches intact.
       var firebaseReady = false;
-      if (AetherRelayConfig.grayCredentialsReady) {
+      if (LinkConfig.remoteReady) {
         try {
           await Firebase.initializeApp();
           firebaseReady = true;
         } catch (error) {
-          agateLog(() => '[AGATE.boot] Firebase.initializeApp failed: $error');
+          novaLog(() => '[NOVA.boot] Firebase.initializeApp failed: $error');
         }
       }
-      final pulse = BoltPulse(vault: vault, enabled: firebaseReady);
+      final push = PushBridge(ledger: ledger, enabled: firebaseReady);
       // Attach listeners SYNCHRONOUSLY (they need to exist before any
-      // background/foreground push tap can fire onMessageOpenedApp).
-      // `getInitialMessage` awaits inside — 4 s hard cap — but the returned
-      // future is only awaited by AetherWarmup, not by main.
-      unawaited(pulse.init());
-      final attrib = StormAttrib(vault: vault);
-      final router = AetherRouter(
-        vault: vault,
+      // background / foreground push tap can fire onMessageOpenedApp).
+      // `getInitialMessage` awaits inside — 4 s hard cap — but the
+      // returned future is only awaited by NovaWarmup, not by main.
+      unawaited(push.init());
+      final attrib = AnchorAttrib(ledger: ledger);
+      final router = LinkRouter(
+        ledger: ledger,
         probe: probe,
         attrib: attrib,
-        dispatch: dispatch,
-        pulse: pulse,
-        gateEnabled: AetherRelayConfig.grayCredentialsReady,
+        courier: courier,
+        push: push,
+        remoteEnabled: LinkConfig.remoteReady,
       );
 
-      agateLog(() => '[AGATE.boot] gateEnabled=${AetherRelayConfig.grayCredentialsReady}');
+      novaLog(() => '[NOVA.boot] remoteEnabled=${LinkConfig.remoteReady}');
 
       runApp(BoltOfAetherApp(
-        vault: vault,
-        pulse: pulse,
+        ledger: ledger,
+        push: push,
         router: router,
         agent: agent,
       ));
     },
-    (error, stack) => agateLog(() => 'Caught zone error: $error'),
+    (error, stack) => novaLog(() => 'Caught zone error: $error'),
   );
 }
 
 class BoltOfAetherApp extends StatefulWidget {
   const BoltOfAetherApp({
     super.key,
-    required this.vault,
-    required this.pulse,
+    required this.ledger,
+    required this.push,
     required this.router,
     required this.agent,
   });
 
-  final RelayVault vault;
-  final BoltPulse pulse;
-  final AetherRouter router;
-  final BoltAgent agent;
+  final LinkLedger ledger;
+  final PushBridge push;
+  final LinkRouter router;
+  final LinkAgent agent;
 
   @override
   State<BoltOfAetherApp> createState() => _BoltOfAetherAppState();
@@ -132,10 +132,10 @@ class _BoltOfAetherAppState extends State<BoltOfAetherApp> {
       title: 'Bolt of Aether',
       debugShowCheckedModeBanner: false,
       theme: buildAetherTheme(),
-      home: AetherWarmup(
+      home: NovaWarmup(
         router: widget.router,
-        vault: widget.vault,
-        pulse: widget.pulse,
+        ledger: widget.ledger,
+        push: widget.push,
         agent: widget.agent,
         onNativeReady: (state) => setState(() => _state = state),
       ),

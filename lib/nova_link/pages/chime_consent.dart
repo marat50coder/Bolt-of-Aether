@@ -2,44 +2,45 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/app_palette.dart';
-import '../config/relay_config.dart';
-import '../transport/bolt_agent.dart';
-import '../transport/bolt_pulse.dart';
-import '../transport/relay_vault.dart';
-import 'storm_channel.dart';
+import '../config/link_config.dart';
+import '../transport/link_agent.dart';
+import '../transport/link_ledger.dart';
+import '../transport/push_bridge.dart';
+import 'nova_portal.dart';
 
-/// Push permission screen. Programmatic gradient in the Aether palette — no
-/// artwork asset lands in the binary, so nothing here shares bytes with a
-/// sibling app's opt-in screen.
+/// Push-permission screen. Programmatic gradient in the Aether palette —
+/// no artwork asset ships in the binary for this page, so nothing here
+/// shares bytes with any other project's opt-in screen.
 ///
-/// Navigates to StormChannel from its OWN state, never through a callback
-/// captured on the parent's (unmounted-by-then) BuildContext.
-class SparkPermit extends StatefulWidget {
-  const SparkPermit({
+/// Navigates to [NovaPortal] from its OWN state, never through a
+/// callback captured on the parent's (by-then unmounted) BuildContext.
+class ChimeConsent extends StatefulWidget {
+  const ChimeConsent({
     super.key,
-    required this.pulse,
-    required this.vault,
+    required this.push,
+    required this.ledger,
     required this.agent,
     required this.destination,
   });
 
-  final BoltPulse pulse;
-  final RelayVault vault;
-  final BoltAgent agent;
+  final PushBridge push;
+  final LinkLedger ledger;
+  final LinkAgent agent;
   final String destination;
 
   @override
-  State<SparkPermit> createState() => _SparkPermitState();
+  State<ChimeConsent> createState() => _ChimeConsentState();
 }
 
-class _SparkPermitState extends State<SparkPermit> {
+class _ChimeConsentState extends State<ChimeConsent> {
   bool _busy = false;
 
   @override
   void initState() {
     super.initState();
-    // The warmup locks portrait for the native handoff — re-enable rotation
-    // here so a user in landscape does not see a portrait-locked opt-in.
+    // The warmup locks portrait for the native handoff — re-enable
+    // rotation here so a user in landscape does not see a
+    // portrait-locked opt-in.
     SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.portraitUp,
       DeviceOrientation.landscapeLeft,
@@ -51,16 +52,16 @@ class _SparkPermitState extends State<SparkPermit> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final granted = await widget.pulse.askPermission();
+      final granted = await widget.push.askPermission();
       if (!granted) {
         final until = DateTime.now().add(
-          const Duration(seconds: AetherRelayConfig.pushSnoozeSeconds),
+          const Duration(seconds: LinkConfig.pushSnoozeSeconds),
         );
-        await widget.vault.writeInviteCooldown(until);
+        await widget.ledger.writeInviteCooldown(until);
       }
     } catch (_) {
-      // Swallow: the forward navigation below must still run so a plugin
-      // error never dead-ends the user on this screen.
+      // Swallow: the forward navigation below must still run so a
+      // plugin error never dead-ends the user on this screen.
     }
     _forward();
   }
@@ -69,9 +70,9 @@ class _SparkPermitState extends State<SparkPermit> {
     if (_busy) return;
     setState(() => _busy = true);
     final until = DateTime.now().add(
-      const Duration(seconds: AetherRelayConfig.pushSnoozeSeconds),
+      const Duration(seconds: LinkConfig.pushSnoozeSeconds),
     );
-    await widget.vault.writeInviteCooldown(until);
+    await widget.ledger.writeInviteCooldown(until);
     _forward();
   }
 
@@ -80,10 +81,10 @@ class _SparkPermitState extends State<SparkPermit> {
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 320),
-        pageBuilder: (_, _, _) => StormChannel(
+        pageBuilder: (_, _, _) => NovaPortal(
           destination: widget.destination,
-          pulse: widget.pulse,
-          vault: widget.vault,
+          push: widget.push,
+          ledger: widget.ledger,
           agent: widget.agent,
           coldStartPush: false,
         ),
@@ -106,7 +107,7 @@ class _SparkPermitState extends State<SparkPermit> {
               const DecoratedBox(
                 decoration: BoxDecoration(gradient: AetherColors.backdrop),
               ),
-              const _AetherGlow(),
+              const _ChimeGlow(),
               landscape ? _landscapeContent(context) : _portraitContent(context),
             ],
           );
@@ -141,11 +142,9 @@ class _SparkPermitState extends State<SparkPermit> {
   }
 
   Widget _landscapeContent(BuildContext context) {
-    // Landscape: wrap in SafeArea so the LEFT/RIGHT notch inset is applied
-    // (landscape-left puts the Dynamic Island on the left; landscape-right
-    // on the right). The old raw-Padding version only added a top offset,
-    // so on notched phones the bell + headline in the left column clipped
-    // straight into the camera cluster.
+    // Landscape: wrap in SafeArea so the LEFT/RIGHT notch inset is
+    // applied (landscape-left puts the Dynamic Island on the left;
+    // landscape-right on the right).
     return SafeArea(
       minimum: const EdgeInsets.only(top: 12, bottom: 20, left: 12, right: 12),
       child: Row(
@@ -153,8 +152,6 @@ class _SparkPermitState extends State<SparkPermit> {
           Expanded(
             flex: 5,
             child: Padding(
-              // Small inner offset so the artwork column is not glued
-              // straight against the safe-area edge.
               padding: const EdgeInsets.only(left: 24, right: 12),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -272,8 +269,8 @@ class _BellSpark extends StatelessWidget {
   }
 }
 
-class _AetherGlow extends StatelessWidget {
-  const _AetherGlow();
+class _ChimeGlow extends StatelessWidget {
+  const _ChimeGlow();
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(

@@ -3,20 +3,21 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../config/relay_config.dart';
-import '../models/gate_mode.dart';
+import '../config/link_config.dart';
+import '../models/link_mode.dart';
 
-/// Persistent gray-flow state: last route decision, saved partner URL with
-/// expiry, push-invite cooldown, push status flags. SharedPreferences for
-/// small primitives (fast, wiped only on uninstall), SecureStorage for the
-/// saved URL (keychain-backed, survives app reinstalls on some iOS builds
-/// which is exactly what we want for a returning-user shortcut).
-class RelayVault {
-  RelayVault._(this._prefs, this._secure);
+/// Persistent state for the remote-content pipeline: the last route
+/// decision, the cached partner URL with its expiry, the push-invite
+/// cooldown, and a handful of state flags. `SharedPreferences` handles
+/// the small primitives (fast, wiped only on uninstall); the cached URL
+/// lives in the OS keychain via `FlutterSecureStorage` for the tiny
+/// additional survival benefit some iOS reinstall scenarios provide.
+class LinkLedger {
+  LinkLedger._(this._prefs, this._secure);
 
-  static Future<RelayVault> open() async {
+  static Future<LinkLedger> open() async {
     final prefs = await SharedPreferences.getInstance();
-    return RelayVault._(
+    return LinkLedger._(
       prefs,
       const FlutterSecureStorage(
         iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
@@ -27,27 +28,27 @@ class RelayVault {
   final SharedPreferences _prefs;
   final FlutterSecureStorage _secure;
 
-  String get _p => AetherRelayConfig.vaultPrefix;
+  String get _p => LinkConfig.ledgerPrefix;
 
-  // ---------------------------------------------------------------- route
+  // -------------------------------------------------------------- route
 
-  Future<GateRoute> route() async {
+  Future<LinkRoute> route() async {
     final v = _prefs.getString('${_p}route');
     return switch (v) {
-      'web' => GateRoute.web,
-      'native' => GateRoute.native,
-      _ => GateRoute.fresh,
+      'web' => LinkRoute.web,
+      'native' => LinkRoute.native,
+      _ => LinkRoute.fresh,
     };
   }
 
-  Future<void> commitRoute(GateRoute route) async {
+  Future<void> commitRoute(LinkRoute route) async {
     await _prefs.setString('${_p}route', route.name);
   }
 
-  // ------------------------------------------------------------ saved URL
+  // ------------------------------------------------------------ cached URL
 
-  Future<String?> savedUrl() async {
-    final blob = await _secure.read(key: '${_p}saved');
+  Future<String?> cachedUrl() async {
+    final blob = await _secure.read(key: '${_p}cached');
     if (blob == null) return null;
     try {
       final obj = jsonDecode(blob) as Map<String, dynamic>;
@@ -57,7 +58,7 @@ class RelayVault {
       if (expires is int && expires > 0) {
         final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
         if (now > expires) {
-          await clearSavedUrl();
+          await clearCachedUrl();
           return null;
         }
       }
@@ -67,23 +68,23 @@ class RelayVault {
     }
   }
 
-  Future<void> writeSavedUrl(String url, {int? expiresAt}) async {
+  Future<void> writeCachedUrl(String url, {int? expiresAt}) async {
     final defaultExpiry = DateTime.now()
-            .add(const Duration(days: AetherRelayConfig.savedUrlExpiryDays))
+            .add(const Duration(days: LinkConfig.cachedUrlExpiryDays))
             .millisecondsSinceEpoch ~/
         1000;
     final payload = jsonEncode({
       'url': url,
       'expires': expiresAt ?? defaultExpiry,
     });
-    await _secure.write(key: '${_p}saved', value: payload);
+    await _secure.write(key: '${_p}cached', value: payload);
   }
 
-  Future<void> clearSavedUrl() async {
-    await _secure.delete(key: '${_p}saved');
+  Future<void> clearCachedUrl() async {
+    await _secure.delete(key: '${_p}cached');
   }
 
-  // --------------------------------------------------------- push cooldown
+  // ------------------------------------------------------- push cooldown
 
   DateTime? get inviteCooldownUntil {
     final ms = _prefs.getInt('${_p}invite_snooze_until');
@@ -108,7 +109,7 @@ class RelayVault {
   Future<void> setPushBlockedByOs(bool v) =>
       _prefs.setBool('${_p}push_os_denied', v);
 
-  // --------------------------------------------------------- misc flags
+  // ----------------------------------------------------------- misc flags
 
   bool get organicCommitted => _prefs.getBool('${_p}organic_committed') ?? false;
   Future<void> setOrganicCommitted(bool v) =>
@@ -127,12 +128,11 @@ class RelayVault {
   Future<void> setAttGranted(bool v) =>
       _prefs.setBool('${_p}att_granted', v);
 
-  // ------------------------------------------------------- pending push URL
-  // Buffered destination for a push tap that arrived before the WebView was
-  // mounted (or between mounts). Persistent so a background→foreground tap
-  // followed by an OS-triggered relaunch does not lose the URL.
-  // `consumePushUrl` is single-shot: read + clear so the same URL never
-  // navigates twice.
+  // ------------------------------------------------------ pending push URL
+  // A push tap that arrives before the WebView is mounted (or between
+  // mounts) is buffered here. Persistent so that a background→foreground
+  // tap followed by an OS relaunch doesn't lose the URL. [consumePushUrl]
+  // is single-shot: read + clear so the same URL never navigates twice.
 
   Future<void> writePushUrl(String url) async {
     if (url.isEmpty) return;

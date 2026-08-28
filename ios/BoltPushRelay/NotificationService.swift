@@ -1,17 +1,16 @@
 import UserNotifications
 
-/// Notification Service Extension without Firebase.
-///
-/// The Runner already brings Firebase via Flutter (CocoaPods locally, Swift
-/// Package Manager on some CI images). Pinning `pod 'Firebase/Messaging'`
-/// on this target as well produced two identical `module Firebase`
-/// declarations in the same Xcode workspace and the archive died with
-/// `Redefinition of module 'Firebase'`.
-///
-/// This extension only attaches a remote image (when the payload carries
-/// one) so the banner still shows rich media. Tap-URL capture stays in
-/// `SceneDelegate` / `BoltPulse` — those already parse the same payload
-/// keys.
+// Notification Service Extension. The main app already brings Firebase
+// via Flutter (CocoaPods locally, SPM on some CI images). Pinning
+// `pod 'Firebase/Messaging'` on this target as well produces two
+// identical `module Firebase` declarations in the same Xcode workspace
+// and the archive dies with `Redefinition of module 'Firebase'`. So
+// this extension deliberately does NOT link Firebase.
+//
+// The only work this extension performs is attaching a remote image
+// when the payload carries one, so the banner still shows rich media.
+// Tap-URL capture stays in `SceneDelegate` and `PushBridge` — those
+// already parse the same set of payload keys.
 final class NotificationService: UNNotificationServiceExtension {
   private var deliver: ((UNNotificationContent) -> Void)?
   private var draft: UNMutableNotificationContent?
@@ -105,7 +104,7 @@ final class NotificationService: UNNotificationServiceExtension {
       do {
         try FileManager.default.moveItem(at: location, to: dest)
         let attachment = try UNNotificationAttachment(
-          identifier: "bolt-media",
+          identifier: "nova-media",
           url: dest,
           options: nil
         )
