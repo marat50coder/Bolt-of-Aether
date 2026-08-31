@@ -75,7 +75,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Bolt of Aether can capture a photo when you attach an image to a bolt.</string>
 	<key>NSUserTrackingUsageDescription</key>
-	<string>Bolt of Aether uses this identifier to keep your daily bolts and streak in sync across your devices without asking you to sign in.</string>
+	<string>Bolt of Aether uses the advertising identifier to measure which campaigns brought you here and to understand how people discover the app. This may be shared with our measurement partner. You can decline and still use every feature.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

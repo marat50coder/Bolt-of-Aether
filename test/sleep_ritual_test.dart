@@ -1,6 +1,6 @@
-import 'package:bolt_of_aether/core/date_keys.dart';
-import 'package:bolt_of_aether/core/ritual_content.dart';
-import 'package:bolt_of_aether/core/sleep_utils.dart';
+import 'package:bolt_of_aether/studio/date_keys.dart';
+import 'package:bolt_of_aether/studio/ritual_content.dart';
+import 'package:bolt_of_aether/studio/sleep_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

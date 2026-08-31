@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.4+5
+version: 1.0.2+7
 
 environment:
   sdk: ^3.12.2
@@ -40,7 +40,7 @@ dependencies:
   audioplayers: ^6.8.1
   path_provider: ^2.1.6
 
-  # Remote-content pipeline (nova_link). Firebase versions are pinned:
+  # Remote-content pipeline (lumen). Firebase versions are pinned:
   # earlier 15.x messaging + 3.x core drop UNNotificationResponse
   # delivery on iOS 26, and 16.x reworked the proxy swizzling.
   firebase_core: ^4.13.0
@@ -108,6 +108,7 @@ flutter:
     - assets/Horizontal_Loading_Screen.webp
     - assets/content/bolts.json
     - assets/content/community.json
+    - assets/legal/privacy.html
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

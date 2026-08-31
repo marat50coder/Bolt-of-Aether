@@ -16,14 +16,14 @@ import UIKit
 //      this on cold start).
 //
 // We persist the extracted URL into `UserDefaults` under
-// `flutter.nova_launch_link` (matches `LinkConfig.coldLinkKey` on the
+// `flutter.lumen_open_link` (matches `LinkConfig.coldLinkKey` on the
 // Dart side). Flutter's `shared_preferences` plugin strips the
 // `flutter.` prefix before exposing the value.
 
 final class SceneDelegate: FlutterSceneDelegate {
   // Must stay in sync with `LinkConfig.coldLinkKey` on the Dart side.
   // Change both places together per project.
-  private static let coldLinkStorageKey = "flutter.nova_launch_link"
+  private static let coldLinkStorageKey = "flutter.lumen_open_link"
 
   override func scene(
     _ scene: UIScene,
